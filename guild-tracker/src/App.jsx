@@ -296,7 +296,25 @@ function UsersTab({ currentUser }) {
 // ============================================================
 // MEMBERS TAB
 // ============================================================
-function MembersTab({ members, setMembers, role }) {
+function MembersTab({ members, setMembers, role }) {const [supabaseUsers, setSupabaseUsers] = useState([]);
+
+useEffect(() => {
+  const fetchUsers = async () => {
+    const { data } = await supabase.from("users").select("id, display, points");
+    if (data) setSupabaseUsers(data);
+  };
+  fetchUsers();
+}, []);
+
+const getPoints = (memberName) => {
+  const u = supabaseUsers.find(u => u.display === memberName);
+  return u ? u.points : 0;
+};
+
+const resetPoints = async (memberName) => {
+  await supabase.from("users").update({ points: 0 }).eq("display", memberName);
+  setSupabaseUsers(prev => prev.map(u => u.display === memberName ? { ...u, points: 0 } : u));
+};
   const [showModal, setShowModal] = useState(false);
   const [editMember, setEditMember] = useState(null);
   const [form, setForm] = useState({ name: "", class: "Warrior", position: "Member", growthPower: "", multiplier: "", points: "", activity: "Active", comment: "" });
@@ -339,7 +357,12 @@ function MembersTab({ members, setMembers, role }) {
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
-            <tr style={{ borderBottom: "1px solid #2d3748" }}>
+            <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>
+  {getPoints(m.name)}
+  {role === "admin" && (
+    <button onClick={() => resetPoints(m.name)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "11px", marginLeft: "6px" }}>↺ Reset</button>
+  )}
+</td>
               {[["#", null], ["Character Name", "name"], ["Class", "class"], ["Position", "position"], ["Growth Power", "growthPower"], ["Multiplier", "multiplier"], ["Points", "points"], ["Activity", "activity"], ["Comment", "comment"], ...(can(role, "editMembers") ? [["Action", null]] : [])].map(([label, col]) => (
                 <th key={label} onClick={() => col && handleSort(col)} style={{ padding: "10px 8px", color: "#9ca3af", fontWeight: "500", textAlign: "left", cursor: col ? "pointer" : "default", whiteSpace: "nowrap", userSelect: "none" }}>
                   {label} {col && sortBy === col ? (sortDir === "asc" ? "↑" : "↓") : ""}
@@ -359,7 +382,12 @@ function MembersTab({ members, setMembers, role }) {
                   <td style={{ padding: "10px 8px" }}><span style={{ background: pc.bg, color: pc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
                   <td style={{ padding: "10px 8px", color: "#e5e7eb" }}>{m.growthPower.toLocaleString()}</td>
                   <td style={{ padding: "10px 8px", color: "#fbbf24" }}>x{m.multiplier.toFixed(2)}</td>
-                  <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>{m.points.toFixed(2)}</td>
+                 <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>
+  {getPoints(m.name)}
+  {role === "admin" && (
+    <button onClick={() => resetPoints(m.name)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "11px", marginLeft: "6px" }}>↺ Reset</button>
+  )}
+</td>
                   <td style={{ padding: "10px 8px" }}><span style={{ background: ac.bg, color: ac.text, padding: "3px 10px", borderRadius: "20px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}><span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ac.dot }}></span>{m.activity}</span></td>
                   <td style={{ padding: "10px 8px", color: "#9ca3af", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.comment || "—"}</td>
                   {can(role, "editMembers") && (
