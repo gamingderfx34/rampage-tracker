@@ -112,8 +112,9 @@ function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
-
   const [isRegistering, setIsRegistering] = useState(false);
+
+  const handleLogin = async () => {
     const { data: user } = await supabase.from("users").select("*").eq("username", username).eq("password", password).maybeSingle()
     if (user) { setError(""); onLogin(user); }
     else setError("❌ Invalid username or password!");
