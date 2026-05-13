@@ -1084,7 +1084,7 @@ export default function GuildTracker() {
     { id: "winners",    label: "🥇 Winners",          count: null },
     ...(can(role, "manageUsers") ? [{ id: "users", label: "🔐 Manage Users", count: null }] : []),
   ];
-  useEffect(() => {
+   useEffect(() => {
     const loadLiveGuildMembers = async () => {
       const { data, error } = await supabase
         .from("users") 
