@@ -1068,7 +1068,7 @@ export default function GuildTracker() {
     catch { return null; }
   });
   const [tab, setTab] = useState("members");
-  const [members, setMembers] = useState(MEMBERS_DEFAULT);
+  const [members, setMembers] = useState([]);
   const [bosses, setBosses]   = useState(BOSSES_DEFAULT);
 
   if (!currentUser) return <LoginPage onLogin={(user) => { setCurrentUser(user); localStorage.setItem("guild_user", JSON.stringify(user)); }} />;
@@ -1084,6 +1084,21 @@ export default function GuildTracker() {
     { id: "winners",    label: "🥇 Winners",          count: null },
     ...(can(role, "manageUsers") ? [{ id: "users", label: "🔐 Manage Users", count: null }] : []),
   ];
+  useEffect(() => {
+    const loadLiveGuildMembers = async () => {
+      const { data, error } = await supabase
+        .from("users") 
+        .select("*");
+
+      if (!error && data) {
+        setMembers(data); 
+      }
+    };
+
+    if (currentUser) {
+      loadLiveGuildMembers();
+    }
+  }, [currentUser]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#0d1117", fontFamily: "'Segoe UI', system-ui, sans-serif", color: "#f3f4f6" }}>
