@@ -1092,8 +1092,8 @@ export default function GuildTracker() {
         <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0 0", flexWrap: "wrap", gap: "8px" }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>⚔️ RAMPAGE TRACKER</h1>
-              <p style={{ margin: "2px 0 0", color: "#6b7280", fontSize: "13px" }}>Attendance · Boss Timers · Auction House</p>
+              <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", display: "flex", alignItems: "center", gap: "8px" }}><img src="https://mbalsusqtkbtoxuawjau.supabase.co/storage/v1/object/public/asset/ChatGPT%20Image%20May%2013,%202026,%2003_55_22%20PM.png" alt="Rampage" style={{ width: "22px", height: "22px", borderRadius: "50%", objectFit: "cover" }} /> RAMPAGE TRACKER</h1>
+              <p style={{ margin: "2px 0 0", color: "#6b7280", fontSize: "13px" }}>Attendance · Unique Boss  · Bidding</p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{ textAlign: "right" }}>
