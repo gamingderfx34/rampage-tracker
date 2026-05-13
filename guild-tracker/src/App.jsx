@@ -270,15 +270,15 @@ function LoginPage({ onLogin }) {
         )}
 
         <Divider />
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {Object.entries(roleColors).filter(([r]) => r !== "pending").map(([role, c]) => (
-            <div key={role} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ background: c.bg, color: c.text, padding: "2px 8px", borderRadius: "20px", fontSize: "11px", minWidth: "72px", textAlign: "center" }}>{c.label}</span>
-              <span style={{ color: T.textMuted, fontSize: "11px" }}>
-                {role === "Creator"&& "<b>xILOVEHER</b>"}
-                {role === "leader" &&  "VALIANT"}
-                {role === "elder"  && "       "}
-                {role === "member" && "       "}
+            <div key={role} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ background: c.bg, color: c.text, padding: "4px 12px", borderRadius: "20px", fontSize: "13px", fontWeight: "700", minWidth: "90px", textAlign: "center", border: `1px solid ${c.text}33` }}>{c.label}</span>
+              <span style={{ color: "#e8eaf0", fontSize: "13px", fontWeight: "700", letterSpacing: "0.04em" }}>
+                {role === "admin"  && <strong style={{ color: "#fca5a5" }}>xILOVEHER</strong>}
+                {role === "leader" && <strong style={{ color: "#fcd34d" }}>VALIANT</strong>}
+                {role === "elder"  && ""}
+                {role === "member" && ""}
               </span>
             </div>
           ))}
