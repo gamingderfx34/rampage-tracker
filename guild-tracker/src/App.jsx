@@ -382,7 +382,7 @@ const resetPoints = async (memberName) => {
                   <td style={{ padding: "10px 8px" }}><span style={{ background: pc.bg, color: pc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
                   <td style={{ padding: "10px 8px", color: "#e5e7eb" }}>{m.growthPower.toLocaleString()}</td>
                   <td style={{ padding: "10px 8px", color: "#fbbf24" }}>x{m.multiplier.toFixed(2)}</td>
-                 <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>
+                  <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>
   {getPoints(m.name)}
   {role === "admin" && (
     <button onClick={() => resetPoints(m.name)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "11px", marginLeft: "6px" }}>↺ Reset</button>
