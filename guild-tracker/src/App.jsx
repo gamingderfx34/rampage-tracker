@@ -1,71 +1,36 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase";
 
 // ============================================================
-// USER ACCOUNTS — Edit these to set your guild's credentials
-// ============================================================
-const USERS = [
-  { username: "admin",    password: "akosiderf",   role: "admin",   display: "Admin" },
-  { username: "valiant",  password: "leader123",  role: "leader",  display: "VALIANT" },
-  { username: "xjinnn",   password: "elder1",   role: "elder",   display: "XJINNN" },
-  { username: "chmb",   password: "elder456",   role: "elder",   display: "CHMB" },
-  { username: "xiloveher",  password: "member123",  role: "member",  display: "xILOVEHER" },
-  { username: "baki",  password: "member456",  role: "member",  display: "Bakiハンマー" },
-  { username: "yujiro",  password: "member789",  role: "member",  display: "Yujiroカンマ" },
-  { username: "xlucypearl",  password: "member000",  role: "member",  display: "xLucyPearl" },
-];
-
 // ROLE PERMISSIONS
+// ============================================================
 const CAN = {
-  editMembers:  ["admin", "leader"],
-  deleteMembers:["admin", "leader"],
-  killBoss:     ["admin", "leader", "elder"],
-  editBoss:     ["admin", "leader", "elder", "member"],
-  addAuction:   ["admin", "leader"],
-  editAuction:  ["admin", "leader"],
-  placeBid:     ["admin", "leader", "elder", "member"],
-  manageUsers:  ["admin"],
+  editMembers:   ["admin", "leader"],
+  deleteMembers: ["admin", "leader"],
+  killBoss:      ["admin", "leader", "elder"],
+  editBoss:      ["admin", "leader", "elder", "member"],
+  addAuction:    ["admin", "leader"],
+  editAuction:   ["admin", "leader"],
+  placeBid:      ["admin", "leader", "elder", "member"],
+  manageUsers:   ["admin"],
 };
 const can = (role, action) => CAN[action]?.includes(role);
 
 // ============================================================
-// DEFAULT DATA
+// CONSTANTS
 // ============================================================
-const CLASSES = ["Berserker", "Skald", "Warlord", "Volva", "Archer", "RuneFighter"];
-const POSITIONS = ["Leader", "Elder", "Member", "Recruit"];
+const CLASSES    = ["Berserker", "Skald", "Warlord", "Volva", "Archer", "RuneFighter"];
+const POSITIONS  = ["Leader", "Elder", "Member", "Recruit"];
 
 const BOSSES_DEFAULT = [
-  { id: 1, name: "Lv. 66 Cruel Outlaw Gand- Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 1 },
-  { id: 2, name: "Lv. 67 Eternal Gatekeeper Amot - Kings Tomb 1F",   color: "#d94a4a", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 1 },
-  { id: 3, name: "Lv. 68 Ruthless Destroyer Hawler- Kings Tomb 1F",     color: "#4ad94a", respawnMin: 45, respawnMax: 90,  lastKilled: null, windowDuration: 30, channel: 1 },
-  { id: 4, name: "Lv. 69 Assulter of Tombs Laudd- Kings Tomb 1F",      color: "#d9a44a", respawnMin: 60, respawnMax: 120, lastKilled: null, windowDuration: 30, channel: 1 },
-  { id: 5, name: "Lv. 66 Cruel Outlaw Gand- Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
-  { id: 6, name: "Lv. 67 Ethernal Destroyer Amot- Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
-  { id: 7, name: "Lv. 68 Ruthless Destroyer Hawler- Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
-  { id: 8, name: "Lv. 69 Assulter of Tombs Laudd- Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
-  
-];
-
-const MEMBERS_DEFAULT = [
-  { id: 1,  name: "VALIANT",       class: "Skald",     position: "Leader", growthPower: 222408, multiplier: 2.23, points: 223.71, activity: "Active",   comment: "" },
-  { id: 2,  name: "두부우우우우",   class: "Archer",      position: "Elder",  growthPower: 260786, multiplier: 2.61, points: 233.80, activity: "Active",   comment: "" },
-  { id: 3,  name: "xJiinnn",   class: "Archer",    position: "Elder",  growthPower: 272785, multiplier: 2.73, points: 213.47, activity: "Active",   comment: "" },
-  { id: 4,  name: "Kiree",   class: "Skald",   position: "Elder",  growthPower: 221026, multiplier: 2.21, points: 141.37, activity: "Active",   comment: "" },
-  { id: 5,  name: "Squee",     class: "RuneFighter",      position: "Elder",  growthPower: 213180, multiplier: 2.13, points: 122.18, activity: "Active",   comment: "" },
-  { id: 6,  name: "Yujiroカンマ",         class: "RuneFighter",  position: "Elder",  growthPower: 205106, multiplier: 2.05, points: 103.45, activity: "Inactive", comment: "" },
-  { id: 7,  name: "chmb",   class: "Archer",   position: "Elder",  growthPower: 208325, multiplier: 2.08, points: 66.53,  activity: "Inactive", comment: "" },
-  { id: 8,  name: "xLucyPearl",  class: "Archer",    position: "Elder", growthPower: 179550, multiplier: 1.80, points: 144.26, activity: "Active",   comment: "" },
-  { id: 9,  name: "BL4iR",        class: "Warlord", position: "Elder", growthPower: 190526, multiplier: 1.91, points: 141.41, activity: "Active",   comment: "" },
-  { id: 10, name: "Bakiハンマー",    class: "Skald",    position: "Member", growthPower: 124966, multiplier: 1.25, points: 138.25, activity: "Active",   comment: "" },
-];
-
-const AUCTIONS_DEFAULT = [
-  { id: 1, name: "Kari Helmet",        type: "Equipment",  imageEmoji: "⛑️", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 1  },
-  { id: 2, name: "Muspel Bottom",      type: "Equipment",  imageEmoji: "👖", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 12 },
-  { id: 3, name: "Twilight Stone",     type: "Material",   imageEmoji: "💎", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 24 },
-  { id: 4, name: "Mastering Skill 24pcs", type: "Consumable", imageEmoji: "📜", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 48 },
-  { id: 5, name: "Storm Bracelet",     type: "Equipment",  imageEmoji: "📿", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 48 },
-  { id: 6, name: "Amber Pouch 654pcs", type: "Material",   imageEmoji: "🎒", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 48 },
+  { id: 1, name: "Lv. 66 Cruel Outlaw Gand - Kings Tomb 1F",          color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 1 },
+  { id: 2, name: "Lv. 67 Eternal Gatekeeper Amot - Kings Tomb 1F",    color: "#d94a4a", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 1 },
+  { id: 3, name: "Lv. 68 Ruthless Destroyer Hawler - Kings Tomb 1F",  color: "#4ad94a", respawnMin: 45, respawnMax: 90,  lastKilled: null, windowDuration: 30, channel: 1 },
+  { id: 4, name: "Lv. 69 Assulter of Tombs Laudd - Kings Tomb 1F",   color: "#d9a44a", respawnMin: 60, respawnMax: 120, lastKilled: null, windowDuration: 30, channel: 1 },
+  { id: 5, name: "Lv. 66 Cruel Outlaw Gand - Kings Tomb 1F",          color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
+  { id: 6, name: "Lv. 67 Ethernal Destroyer Amot - Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
+  { id: 7, name: "Lv. 68 Ruthless Destroyer Hawler - Kings Tomb 1F", color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
+  { id: 8, name: "Lv. 69 Assulter of Tombs Laudd - Kings Tomb 1F",  color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
 ];
 
 // ============================================================
@@ -76,7 +41,13 @@ const labelStyle = { display: "flex", flexDirection: "column", gap: "4px" };
 const btnStyle = (bg, color) => ({ background: bg, border: `1px solid ${color}44`, color, padding: "8px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "600" });
 const positionColors = { Leader: { bg: "#f59e0b", text: "#fff" }, Elder: { bg: "#dc2626", text: "#fff" }, Member: { bg: "#374151", text: "#9ca3af" }, Recruit: { bg: "#1e3a5f", text: "#60a5fa" } };
 const activityColors = { Active: { bg: "#065f46", text: "#34d399", dot: "#34d399" }, Inactive: { bg: "#1f2937", text: "#9ca3af", dot: "#6b7280" } };
-const roleColors = { admin: { bg: "#7f1d1d", text: "#fca5a5", label: "👑 Admin" }, leader: { bg: "#78350f", text: "#fcd34d", label: "🛡️ Leader" }, elder: { bg: "#1e3a5f", text: "#60a5fa", label: "⚔️ Elder" }, member: { bg: "#1f2937", text: "#9ca3af", label: "👤 Member" } };
+const roleColors = {
+  admin:   { bg: "#7f1d1d", text: "#fca5a5", label: "👑 Admin" },
+  leader:  { bg: "#78350f", text: "#fcd34d", label: "🛡️ Leader" },
+  elder:   { bg: "#1e3a5f", text: "#60a5fa", label: "⚔️ Elder" },
+  member:  { bg: "#1f2937", text: "#9ca3af", label: "👤 Member" },
+  pending: { bg: "#374151", text: "#6b7280", label: "⏳ Pending" },
+};
 
 function formatTime(ms) {
   if (ms <= 0) return "00:00:00";
@@ -107,51 +78,57 @@ function Modal({ children, onClose }) {
 }
 
 // ============================================================
-// LOGIN PAGE
+// LOGIN PAGE  — with registration (pending approval)
 // ============================================================
 function LoginPage({ onLogin }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [showPass, setShowPass] = useState(false);
+  const [username, setUsername]       = useState("");
+  const [password, setPassword]       = useState("");
+  const [error, setError]             = useState("");
+  const [showPass, setShowPass]       = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-const [regForm, setRegForm] = useState({ display: "", username: "", password: "" });
-const [regError, setRegError] = useState("");
+  const [regForm, setRegForm]         = useState({ display: "", username: "", password: "" });
+  const [regError, setRegError]       = useState("");
+  const [regSuccess, setRegSuccess]   = useState(false);
 
-const handleRegister = async () => {
-  if (!regForm.username || !regForm.password || !regForm.display) {
-    setRegError("Please fill in all fields.");
-    return;
-  }
-  const { data: existing } = await supabase
-    .from("users")
-    .select("*")
-    .eq("username", regForm.username)
-    .maybeSingle();
+  const handleRegister = async () => {
+    if (!regForm.username || !regForm.password || !regForm.display) {
+      setRegError("Please fill in all fields.");
+      return;
+    }
+    const { data: existing } = await supabase
+      .from("users")
+      .select("id")
+      .eq("username", regForm.username.toLowerCase().trim())
+      .maybeSingle();
 
-  if (existing) {
-    setRegError("Username already taken.");
-    return;
-  }
+    if (existing) { setRegError("Username already taken."); return; }
 
-  const { error } = await supabase.from("users").insert([{
-    username: regForm.username,
-    password: regForm.password,
-    display: regForm.display,
-    role: "member"
-  }]);
+    const { error: insertErr } = await supabase.from("users").insert([{
+      username: regForm.username.toLowerCase().trim(),
+      password: regForm.password,
+      display:  regForm.display.trim(),
+      role:     "pending",   // ← not approved yet
+    }]);
 
-  if (error) {
-    setRegError("Registration failed. Try again.");
-  } else {
-    setIsRegistering(false);
-    setError("✅ Account created! You can now log in.");
-  }
-};
+    if (insertErr) { setRegError("Registration failed. Try again."); }
+    else { setRegSuccess(true); setIsRegistering(false); }
+  };
+
   const handleLogin = async () => {
-    const { data: user } = await supabase.from("users").select("*").eq("username", username).eq("password", password).maybeSingle()
-    if (user) { setError(""); onLogin(user); }
-    else setError("❌ Invalid username or password!");
+    setError("");
+    const { data: user } = await supabase
+      .from("users")
+      .select("*")
+      .eq("username", username.toLowerCase().trim())
+      .eq("password", password)
+      .maybeSingle();
+
+    if (!user) { setError("❌ Invalid username or password!"); return; }
+    if (user.role === "pending") {
+      setError("⏳ Your account is awaiting admin approval. Please wait.");
+      return;
+    }
+    onLogin(user);
   };
 
   return (
@@ -159,40 +136,58 @@ const handleRegister = async () => {
       <div style={{ background: "#1a1f2e", border: "1px solid #2d3748", borderRadius: "16px", padding: "40px", width: "100%", maxWidth: "400px" }}>
         <div style={{ textAlign: "center", marginBottom: "32px" }}>
           <div style={{ fontSize: "48px", marginBottom: "12px" }}>⚔️</div>
-          <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Guild Tracker</h1>
-          <p style={{ color: "#6b7280", fontSize: "14px", margin: "6px 0 0" }}>{isRegistering ? "Create a new account" : "Sign in to your guild account"}</p>
+          <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>RAMPAGE TRACKER</h1>
+          <p style={{ color: "#6b7280", fontSize: "14px", margin: "6px 0 0" }}>
+            {isRegistering ? "Create a new account" : "Sign in to your guild account"}
+          </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <label style={labelStyle}>
-            <span style={{ color: "#9ca3af", fontSize: "13px" }}>Username</span>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Enter username" style={inputStyle} autoFocus />
-          </label>
-          <label style={labelStyle}>
-            <span style={{ color: "#9ca3af", fontSize: "13px" }}>Password</span>
-            <div style={{ position: "relative" }}>
-              <input type={showPass ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Enter password" style={{ ...inputStyle, paddingRight: "40px" }} />
-              <button onClick={() => setShowPass(!showPass)} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: "16px" }}>{showPass ? "🙈" : "👁️"}</button>
+
+        {regSuccess && (
+          <div style={{ background: "#065f4633", border: "1px solid #34d39944", borderRadius: "8px", color: "#34d399", fontSize: "13px", padding: "10px 14px", marginBottom: "16px", textAlign: "center" }}>
+            ✅ Account created! Please wait for admin approval before logging in.
+          </div>
+        )}
+
+        {!isRegistering ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <label style={labelStyle}>
+              <span style={{ color: "#9ca3af", fontSize: "13px" }}>Username</span>
+              <input type="text" value={username} onChange={e => setUsername(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Enter username" style={inputStyle} autoFocus />
+            </label>
+            <label style={labelStyle}>
+              <span style={{ color: "#9ca3af", fontSize: "13px" }}>Password</span>
+              <div style={{ position: "relative" }}>
+                <input type={showPass ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Enter password" style={{ ...inputStyle, paddingRight: "40px" }} />
+                <button onClick={() => setShowPass(!showPass)} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: "16px" }}>{showPass ? "🙈" : "👁️"}</button>
+              </div>
+            </label>
+            {error && <div style={{ color: error.startsWith("⏳") ? "#fbbf24" : "#f87171", fontSize: "13px", textAlign: "center" }}>{error}</div>}
+            <button onClick={handleLogin} style={{ ...btnStyle("#1e3a8a", "#a5b4fc"), width: "100%", padding: "12px", fontSize: "15px" }}>Login</button>
+            <button onClick={() => { setIsRegistering(true); setError(""); setRegSuccess(false); }} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "13px", cursor: "pointer" }}>Register new account</button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <input placeholder="Display Name (your character name)" value={regForm.display} onChange={e => setRegForm({ ...regForm, display: e.target.value })} style={inputStyle} autoFocus />
+            <input placeholder="Username (for login)" value={regForm.username} onChange={e => setRegForm({ ...regForm, username: e.target.value })} style={inputStyle} />
+            <input type="password" placeholder="Password" value={regForm.password} onChange={e => setRegForm({ ...regForm, password: e.target.value })} style={inputStyle} />
+            {regError && <div style={{ color: "#f87171", fontSize: "13px" }}>{regError}</div>}
+            <div style={{ background: "#78350f22", border: "1px solid #fcd34d33", borderRadius: "8px", color: "#fcd34d", fontSize: "12px", padding: "10px 14px" }}>
+              ⚠️ Your account will require <strong>admin approval</strong> before you can log in.
             </div>
-          </label>
-          {error && <div style={{ color: "#f87171", fontSize: "13px", textAlign: "center" }}>{error}</div>}
-          <button onClick={handleLogin} style={{ ...btnStyle("#1e3a8a", "#a5b4fc"), width: "100%", padding: "12px", fontSize: "15px" }}>Login</button>
-        {isRegistering && <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
-          <input placeholder='Display Name' value={regForm.display} onChange={e => setRegForm({...regForm, display: e.target.value})} style={inputStyle} />
-          <input placeholder='Username' value={regForm.username} onChange={e => setRegForm({...regForm, username: e.target.value})} style={inputStyle} />
-          <input type='password' placeholder='Password' value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} style={inputStyle} />
-          {regError && <div style={{ color: '#f87171', fontSize: '13px' }}>{regError}</div>}
-          <button onClick={handleRegister} style={{ background: '#1e3a8a', color: '#a5b4fc', border: 'none', borderRadius: '8px', width: '100%', padding: '12px', fontSize: '15px', cursor: 'pointer' }}>Register</button>
-        </div>}<button onClick={() => { setIsRegistering(!isRegistering); setError(""); setRegError(""); }} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "13px", cursor: "pointer", marginTop: "8px" }}>{isRegistering ? "Back to Login" : "Register new account"}</button>
-        </div>
+            <button onClick={handleRegister} style={{ ...btnStyle("#1e3a8a", "#a5b4fc"), width: "100%", padding: "12px", fontSize: "15px" }}>Register</button>
+            <button onClick={() => { setIsRegistering(false); setRegError(""); }} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "13px", cursor: "pointer" }}>Back to Login</button>
+          </div>
+        )}
+
         <div style={{ marginTop: "24px", padding: "16px", background: "#0f1320", borderRadius: "8px" }}>
           <p style={{ color: "#6b7280", fontSize: "12px", margin: "0 0 8px", fontWeight: "600" }}>ROLE PERMISSIONS</p>
-          {Object.entries(roleColors).map(([role, c]) => (
+          {Object.entries(roleColors).filter(([r]) => r !== "pending").map(([role, c]) => (
             <div key={role} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
               <span style={{ background: c.bg, color: c.text, padding: "2px 8px", borderRadius: "20px", fontSize: "11px" }}>{c.label}</span>
               <span style={{ color: "#6b7280", fontSize: "11px" }}>
-                {role === "admin" && "Full access + manage users"}
+                {role === "admin"  && "Full access + manage users"}
                 {role === "leader" && "Edit members, bosses, auctions"}
-                {role === "elder" && "Kill bosses, place bids"}
+                {role === "elder"  && "Kill bosses, place bids"}
                 {role === "member" && "View only + place bids"}
               </span>
             </div>
@@ -204,32 +199,101 @@ const handleRegister = async () => {
 }
 
 // ============================================================
-// USER MANAGEMENT (Admin only)
+// MANAGE USERS TAB  — full Supabase, with approval flow
 // ============================================================
 function UsersTab({ currentUser }) {
-  const [users, setUsers] = useState(USERS);
+  const [users, setUsers]       = useState([]);
+  const [loading, setLoading]   = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [editUser, setEditUser] = useState(null);
-  const [form, setForm] = useState({ username: "", password: "", role: "member", display: "" });
-  const [showPass, setShowPass] = useState(false);
+  const [editUser, setEditUser]  = useState(null);
+  const [form, setForm]          = useState({ username: "", password: "", role: "member", display: "" });
+  const [showPass, setShowPass]  = useState(false);
+
+  // Load users + subscribe to changes
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase.from("users").select("*").order("created_at", { ascending: true });
+      if (data) setUsers(data);
+      setLoading(false);
+    };
+    load();
+
+    const channel = supabase
+      .channel("users-manage")
+      .on("postgres_changes", { event: "*", schema: "public", table: "users" }, () => load())
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  const pending  = users.filter(u => u.role === "pending");
+  const approved = users.filter(u => u.role !== "pending");
+
+  const approveUser = async (u, role) => {
+    await supabase.from("users").update({ role }).eq("id", u.id);
+  };
+  const rejectUser = async (u) => {
+    if (window.confirm(`Reject & delete account for "${u.display}"?`)) {
+      await supabase.from("users").delete().eq("id", u.id);
+    }
+  };
 
   const openAdd  = () => { setEditUser(null); setForm({ username: "", password: "", role: "member", display: "" }); setShowModal(true); };
-  const openEdit = (u) => { setEditUser(u); setForm({ ...u }); setShowModal(true); };
-  const handleSave = () => {
-    if (!form.username || !form.password) return;
-    if (editUser) setUsers(users.map(u => u.username === editUser.username ? { ...form } : u));
-    else setUsers([...users, { ...form }]);
+  const openEdit = (u) => { setEditUser(u); setForm({ username: u.username, password: u.password, role: u.role, display: u.display }); setShowModal(true); };
+
+  const handleSave = async () => {
+    if (!form.username || !form.password || !form.display) return;
+    if (editUser) {
+      await supabase.from("users").update({ username: form.username, password: form.password, role: form.role, display: form.display }).eq("id", editUser.id);
+    } else {
+      await supabase.from("users").insert([{ username: form.username, password: form.password, role: form.role, display: form.display }]);
+    }
     setShowModal(false);
   };
-  const handleDelete = (username) => {
-    if (username === currentUser.username) return alert("Cannot delete your own account!");
-    setUsers(users.filter(u => u.username !== username));
+
+  const handleDelete = async (u) => {
+    if (u.id === currentUser.id) return alert("Cannot delete your own account!");
+    if (window.confirm(`Delete user "${u.display}"?`)) {
+      await supabase.from("users").delete().eq("id", u.id);
+    }
   };
+
+  if (loading) return <div style={{ color: "#6b7280", textAlign: "center", padding: "40px" }}>Loading users…</div>;
 
   return (
     <div>
+      {/* ── Pending Approvals ── */}
+      {pending.length > 0 && (
+        <div style={{ marginBottom: "24px" }}>
+          <div style={{ color: "#fbbf24", fontWeight: "700", fontSize: "15px", marginBottom: "10px" }}>
+            ⏳ Pending Approvals ({pending.length})
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {pending.map(u => (
+              <div key={u.id} style={{ background: "#78350f22", border: "1px solid #fcd34d33", borderRadius: "10px", padding: "12px 16px", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: "#f3f4f6", fontWeight: "600" }}>{u.display}</div>
+                  <div style={{ color: "#6b7280", fontSize: "12px", fontFamily: "monospace" }}>{u.username}</div>
+                </div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {["leader", "elder", "member"].map(r => (
+                    <button key={r} onClick={() => approveUser(u, r)} style={{ background: roleColors[r].bg, color: roleColors[r].text, border: "none", borderRadius: "6px", padding: "5px 12px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
+                      Approve as {r}
+                    </button>
+                  ))}
+                  <button onClick={() => rejectUser(u)} style={{ background: "#7f1d1d", color: "#fca5a5", border: "none", borderRadius: "6px", padding: "5px 12px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Approved Users Table ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <div style={{ color: "#9ca3af", fontSize: "14px" }}>{users.length} accounts</div>
+        <div style={{ color: "#9ca3af", fontSize: "14px" }}>{approved.length} accounts</div>
         <button onClick={openAdd} style={btnStyle("#1e3a8a", "#a5b4fc")}>+ Add User</button>
       </div>
       <div style={{ background: "#0f1320", border: "1px solid #1f2937", borderRadius: "10px", overflow: "hidden" }}>
@@ -242,17 +306,17 @@ function UsersTab({ currentUser }) {
             </tr>
           </thead>
           <tbody>
-            {users.map((u, i) => {
-              const rc = roleColors[u.role];
+            {approved.map((u, i) => {
+              const rc = roleColors[u.role] || roleColors.member;
               return (
-                <tr key={u.username} style={{ borderBottom: "1px solid #1f2937", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
+                <tr key={u.id} style={{ borderBottom: "1px solid #1f2937", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
                   <td style={{ padding: "12px 16px", color: "#f3f4f6", fontWeight: "600" }}>{u.display}</td>
                   <td style={{ padding: "12px 16px", color: "#60a5fa", fontFamily: "monospace" }}>{u.username}</td>
-                  <td style={{ padding: "12px 16px", color: "#6b7280", fontFamily: "monospace" }}>{"•".repeat(u.password.length)}</td>
+                  <td style={{ padding: "12px 16px", color: "#6b7280", fontFamily: "monospace" }}>{"•".repeat(Math.min(u.password?.length || 0, 12))}</td>
                   <td style={{ padding: "12px 16px" }}><span style={{ background: rc.bg, color: rc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{rc.label}</span></td>
                   <td style={{ padding: "12px 16px" }}>
                     <button onClick={() => openEdit(u)} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", marginRight: "8px" }}>Edit</button>
-                    <button onClick={() => handleDelete(u.username)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer" }}>Delete</button>
+                    <button onClick={() => handleDelete(u)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer" }}>Delete</button>
                   </td>
                 </tr>
               );
@@ -260,9 +324,7 @@ function UsersTab({ currentUser }) {
           </tbody>
         </table>
       </div>
-      <div style={{ marginTop: "16px", padding: "12px 16px", background: "#7f1d1d22", border: "1px solid #f8717133", borderRadius: "8px", color: "#fca5a5", fontSize: "13px" }}>
-        ⚠️ <strong>Important:</strong> To make user changes permanent, update the USERS array at the top of App.jsx and redeploy.
-      </div>
+
       {showModal && (
         <Modal onClose={() => setShowModal(false)}>
           <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>{editUser ? "Edit User" : "Add User"}</h2>
@@ -294,55 +356,130 @@ function UsersTab({ currentUser }) {
 }
 
 // ============================================================
-// MEMBERS TAB
+// MEMBERS TAB  — loads from Supabase users (approved only), real-time
 // ============================================================
-function MembersTab({ members, setMembers, role }) {const [supabaseUsers, setSupabaseUsers] = useState([]);
-
-useEffect(() => {
-  const fetchUsers = async () => {
-    const { data } = await supabase.from("users").select("id, display, points");
-    if (data) setSupabaseUsers(data);
-  };
-  fetchUsers();
-}, []);
-
-const getPoints = (memberName) => {
-  const u = supabaseUsers.find(u => u.display === memberName);
-  return u ? u.points : 0;
-};
-
-const resetPoints = async (memberName) => {
-  await supabase.from("users").update({ points: 0 }).eq("display", memberName);
-  setSupabaseUsers(prev => prev.map(u => u.display === memberName ? { ...u, points: 0 } : u));
-};
+function MembersTab({ role }) {
+  const [members, setMembers]   = useState([]);
+  const [loading, setLoading]   = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editMember, setEditMember] = useState(null);
-  const [form, setForm] = useState({ name: "", class: "Warrior", position: "Member", growthPower: "", multiplier: "", points: "", activity: "Active", comment: "" });
-  const [sortBy, setSortBy] = useState("points");
-  const [sortDir, setSortDir] = useState("desc");
+  const [form, setForm]         = useState({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" });
+  const [sortBy, setSortBy]     = useState("growthPower");
+  const [sortDir, setSortDir]   = useState("desc");
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
 
-  const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Warrior", position: "Member", growthPower: "", multiplier: "", points: "", activity: "Active", comment: "" }); setShowModal(true); };
-  const openEdit = (m) => { setEditMember(m); setForm({ ...m }); setShowModal(true); };
-  const handleSave = () => {
+  // Members come from the `users` table (approved users) + a `members` table for extra fields.
+  // Strategy: use `users` table for identity/points, but pull extra member info from a
+  // separate `members` table. If you only have `users`, we merge what we can.
+  // 
+  // Here we load from `members` table (if it exists) for the roster with growthPower etc.
+  // If members table doesn't exist, we fall back to users table for display.
+
+  const loadMembers = async () => {
+    // Try dedicated members table first
+    const { data: membersData, error } = await supabase
+      .from("members")
+      .select("*")
+      .order("growthPower", { ascending: false });
+
+    if (!error && membersData) {
+      setMembers(membersData);
+    } else {
+      // Fallback: load approved users from users table
+      const { data: usersData } = await supabase
+        .from("users")
+        .select("id, display, role, points")
+        .neq("role", "pending")
+        .order("created_at", { ascending: true });
+
+      if (usersData) {
+        const roleToPosition = { admin: "Leader", leader: "Leader", elder: "Elder", member: "Member" };
+        setMembers(usersData.map(u => ({
+          id:          u.id,
+          name:        u.display,
+          class:       "—",
+          position:    roleToPosition[u.role] || "Member",
+          growthPower: 0,
+          multiplier:  1,
+          points:      u.points || 0,
+          activity:    "Active",
+          comment:     "",
+        })));
+      }
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadMembers();
+
+    // Real-time: watch members table AND users table for point changes
+    const ch1 = supabase
+      .channel("members-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "members" }, loadMembers)
+      .subscribe();
+
+    const ch2 = supabase
+      .channel("users-points-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "users" }, loadMembers)
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); };
+  }, []);
+
+  const resetPoints = async (member) => {
+    // Reset points in users table (match by display name)
+    await supabase.from("users").update({ points: 0 }).eq("display", member.name);
+    // If using members table, reset there too
+    await supabase.from("members").update({ points: 0 }).eq("id", member.id);
+    loadMembers();
+  };
+
+  const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" }); setShowModal(true); };
+  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: m.class, position: m.position, growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity, comment: m.comment || "" }); setShowModal(true); };
+
+  const handleSave = async () => {
     if (!form.name) return;
-    if (editMember) setMembers(members.map(m => m.id === editMember.id ? { ...form, id: m.id, growthPower: +form.growthPower, multiplier: +form.multiplier, points: +form.points } : m));
-    else setMembers([...members, { ...form, id: Date.now(), growthPower: +form.growthPower, multiplier: +form.multiplier, points: +form.points }]);
+    const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment };
+    if (editMember) {
+      await supabase.from("members").update(payload).eq("id", editMember.id);
+    } else {
+      await supabase.from("members").insert([{ ...payload, points: 0 }]);
+    }
     setShowModal(false);
   };
-  const handleDelete = (id) => setMembers(members.filter(m => m.id !== id));
-  const handleSort = (col) => { if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortBy(col); setSortDir("desc"); } };
-  const sorted = [...members].sort((a, b) => { const v = sortDir === "asc" ? 1 : -1; return typeof a[sortBy] === "number" ? (a[sortBy] - b[sortBy]) * v : String(a[sortBy]).localeCompare(String(b[sortBy])) * v; });
-  const handleImport = () => {
-    const lines = importText.trim().split("\n").filter(Boolean);
-    const imported = lines.map((line, i) => { const c = line.split(/\t|,/); return { id: Date.now() + i, name: c[0]?.trim() || "Unknown", class: c[1]?.trim() || "Warrior", position: c[2]?.trim() || "Member", growthPower: parseFloat(c[3]) || 0, multiplier: parseFloat(c[4]) || 1, points: parseFloat(c[5]) || 0, activity: c[6]?.trim() || "Active", comment: c[7]?.trim() || "" }; });
-    setMembers(prev => [...prev, ...imported]); setImportText(""); setShowImport(false);
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Remove this member from the roster?")) {
+      await supabase.from("members").delete().eq("id", id);
+    }
   };
+
+  const handleSort = (col) => { if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortBy(col); setSortDir("desc"); } };
+
+  const sorted = [...members].sort((a, b) => {
+    const v = sortDir === "asc" ? 1 : -1;
+    const av = a[sortBy], bv = b[sortBy];
+    return typeof av === "number" ? (av - bv) * v : String(av).localeCompare(String(bv)) * v;
+  });
+
+  const handleImport = async () => {
+    const lines = importText.trim().split("\n").filter(Boolean);
+    const rows = lines.map(line => {
+      const c = line.split(/\t|,/);
+      return { name: c[0]?.trim() || "Unknown", class: c[1]?.trim() || "Archer", position: c[2]?.trim() || "Member", growthPower: parseFloat(c[3]) || 0, multiplier: parseFloat(c[4]) || 1, points: parseFloat(c[5]) || 0, activity: c[6]?.trim() || "Active", comment: c[7]?.trim() || "" };
+    });
+    await supabase.from("members").insert(rows);
+    setImportText(""); setShowImport(false);
+  };
+
   const exportCSV = () => {
-    const blob = new Blob(["Name,Class,Position,Growth Power,Multiplier,Points,Activity,Comment\n" + members.map(m => `${m.name},${m.class},${m.position},${m.growthPower},${m.multiplier},${m.points},${m.activity},${m.comment}`).join("\n")], { type: "text/csv" });
+    const blob = new Blob(["Name,Class,Position,Growth Power,Multiplier,Points,Activity,Comment\n" + members.map(m => `${m.name},${m.class},${m.position},${m.growthPower},${m.multiplier},${m.points || 0},${m.activity},${m.comment || ""}`).join("\n")], { type: "text/csv" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "guild_members.csv"; a.click();
   };
+
+  if (loading) return <div style={{ color: "#6b7280", textAlign: "center", padding: "40px" }}>Loading members…</div>;
 
   return (
     <div>
@@ -368,21 +505,21 @@ const resetPoints = async (memberName) => {
           <tbody>
             {sorted.map((m, i) => {
               const pc = positionColors[m.position] || positionColors.Member;
-              const ac = activityColors[m.activity] || activityColors.Inactive;
+              const ac = activityColors[m.activity]  || activityColors.Inactive;
               return (
                 <tr key={m.id} style={{ borderBottom: "1px solid #1f2937", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
                   <td style={{ padding: "10px 8px", color: "#6b7280" }}>{i + 1}</td>
                   <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "600" }}>{m.name}</td>
                   <td style={{ padding: "10px 8px", color: "#9ca3af" }}>{m.class}</td>
                   <td style={{ padding: "10px 8px" }}><span style={{ background: pc.bg, color: pc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
-                  <td style={{ padding: "10px 8px", color: "#e5e7eb" }}>{m.growthPower.toLocaleString()}</td>
-                  <td style={{ padding: "10px 8px", color: "#fbbf24" }}>x{m.multiplier.toFixed(2)}</td>
+                  <td style={{ padding: "10px 8px", color: "#e5e7eb" }}>{(m.growthPower || 0).toLocaleString()}</td>
+                  <td style={{ padding: "10px 8px", color: "#fbbf24" }}>x{(m.multiplier || 1).toFixed(2)}</td>
                   <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>
-  {getPoints(m.name)}
-  {role === "admin" && (
-    <button onClick={() => resetPoints(m.name)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "11px", marginLeft: "6px" }}>↺ Reset</button>
-  )}
-</td>
+                    {m.points || 0}
+                    {can(role, "editMembers") && (
+                      <button onClick={() => resetPoints(m)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "11px", marginLeft: "6px" }} title="Reset points">↺ Reset</button>
+                    )}
+                  </td>
                   <td style={{ padding: "10px 8px" }}><span style={{ background: ac.bg, color: ac.text, padding: "3px 10px", borderRadius: "20px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}><span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ac.dot }}></span>{m.activity}</span></td>
                   <td style={{ padding: "10px 8px", color: "#9ca3af", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.comment || "—"}</td>
                   {can(role, "editMembers") && (
@@ -394,14 +531,18 @@ const resetPoints = async (memberName) => {
                 </tr>
               );
             })}
+            {sorted.length === 0 && (
+              <tr><td colSpan={10} style={{ padding: "40px", color: "#6b7280", textAlign: "center" }}>No members yet. Add members manually or ask admin to approve registrations.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
+
       {showModal && can(role, "editMembers") && (
         <Modal onClose={() => setShowModal(false)}>
           <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>{editMember ? "Edit Member" : "Add Member"}</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            {[["Character Name", "name", "text"], ["Growth Power", "growthPower", "number"], ["Multiplier", "multiplier", "number"], ["Points", "points", "number"]].map(([label, key, type]) => (
+            {[["Character Name", "name", "text"], ["Growth Power", "growthPower", "number"], ["Multiplier", "multiplier", "number"]].map(([label, key, type]) => (
               <label key={key} style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>{label}</span><input type={type} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} style={inputStyle} /></label>
             ))}
             {[["Class", "class", CLASSES], ["Position", "position", POSITIONS], ["Activity", "activity", ["Active", "Inactive"]]].map(([label, key, opts]) => (
@@ -415,6 +556,7 @@ const resetPoints = async (memberName) => {
           </div>
         </Modal>
       )}
+
       {showImport && (
         <Modal onClose={() => setShowImport(false)}>
           <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>📥 Import Members</h2>
@@ -431,14 +573,14 @@ const resetPoints = async (memberName) => {
 }
 
 // ============================================================
-// BOSS TIMER TAB
+// BOSS TIMER TAB  — local state (timers don't need realtime)
 // ============================================================
 function BossTimerTab({ bosses, setBosses, role }) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow]           = useState(Date.now());
   const [showModal, setShowModal] = useState(false);
   const [editBoss, setEditBoss] = useState(null);
-  const [form, setForm] = useState({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9" });
-  const [channel, setChannel] = useState(1);
+  const [form, setForm]         = useState({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9" });
+  const [channel, setChannel]   = useState(1);
   const [killModal, setKillModal] = useState(null);
   const [killOffset, setKillOffset] = useState(0);
 
@@ -446,17 +588,17 @@ function BossTimerTab({ bosses, setBosses, role }) {
 
   const getBossState = (boss) => {
     if (!boss.lastKilled) return { state: "unknown", label: "No Data — waiting for first kill" };
-    const elapsed = now - boss.lastKilled;
+    const elapsed   = now - boss.lastKilled;
     const respawnMs = boss.respawnMin * 60000;
-    const windowMs = boss.windowDuration * 60000;
-    if (elapsed < respawnMs) return { state: "waiting", label: `Spawn window in ${formatTime(respawnMs - elapsed)}` };
+    const windowMs  = boss.windowDuration * 60000;
+    if (elapsed < respawnMs)            return { state: "waiting",  label: `Spawn window in ${formatTime(respawnMs - elapsed)}` };
     if (elapsed < respawnMs + windowMs) return { state: "spawning", label: `🟢 SPAWN WINDOW — ${formatTime(respawnMs + windowMs - elapsed)} left` };
     return { state: "overdue", label: "⚠️ Overdue — boss may have spawned!" };
   };
 
   const stateColors = { unknown: "#374151", waiting: "#1e3a5f", spawning: "#065f46", overdue: "#7f1d1d" };
-  const stateDots  = { unknown: "#6b7280", waiting: "#60a5fa", spawning: "#34d399", overdue: "#f87171" };
-  const filtered   = bosses.filter(b => b.channel === channel);
+  const stateDots   = { unknown: "#6b7280", waiting: "#60a5fa", spawning: "#34d399", overdue: "#f87171" };
+  const filtered    = bosses.filter(b => b.channel === channel);
 
   const openAdd  = () => { setEditBoss(null); setForm({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9" }); setShowModal(true); };
   const openEdit = (b) => { setEditBoss(b); setForm({ ...b }); setShowModal(true); };
@@ -502,6 +644,7 @@ function BossTimerTab({ bosses, setBosses, role }) {
         })}
         {filtered.length === 0 && <div style={{ color: "#6b7280", textAlign: "center", padding: "40px" }}>No bosses for Channel {channel}.</div>}
       </div>
+
       {killModal && (
         <Modal onClose={() => setKillModal(null)}>
           <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>⚔️ Boss Killed: {killModal.name}</h2>
@@ -537,36 +680,101 @@ function BossTimerTab({ bosses, setBosses, role }) {
 }
 
 // ============================================================
-// AUCTION TAB
+// AUCTION TAB  — bids saved to Supabase auction_winners, real-time
 // ============================================================
-function AuctionTab({ auctions, setAuctions, role, currentUser }) {
-  const [now, setNow] = useState(Date.now());
-  const [filter, setFilter] = useState("All");
+function AuctionTab({ role, currentUser }) {
+  const [auctions, setAuctions] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [now, setNow]           = useState(Date.now());
+  const [filter, setFilter]     = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const [form, setForm] = useState({ name: "", type: "Equipment", imageEmoji: "⚔️", highestBid: 0, bidder: "-", hoursLeft: 48 });
+  const [form, setForm]         = useState({ name: "", type: "Equipment", imageEmoji: "⚔️", highestBid: 0, bidder: "-", hoursLeft: 48 });
   const [bidModal, setBidModal] = useState(null);
-  const [bidForm, setBidForm] = useState({ amount: "", bidder: "" });
+  const [bidForm, setBidForm]   = useState({ amount: "", bidder: "" });
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
 
+  // Load auctions from Supabase `events` table
+  const loadAuctions = async () => {
+    const { data, error } = await supabase.from("events").select("*").order("created_at", { ascending: true });
+    if (!error && data) {
+      setAuctions(data.map(row => ({
+        id:          row.id,
+        name:        row.name,
+        type:        row.type || "Equipment",
+        imageEmoji:  row.imageEmoji || row.image_emoji || "⚔️",
+        highestBid:  row.highestBid  ?? row.highest_bid ?? 0,
+        bidder:      row.bidder ?? "-",
+        endsAt:      row.endsAt    ?? row.ends_at
+                       ? new Date(row.endsAt ?? row.ends_at).getTime()
+                       : Date.now() + 3600000 * 48,
+      })));
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadAuctions();
+    const ch = supabase
+      .channel("auctions-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "events" }, loadAuctions)
+      .on("postgres_changes", { event: "*", schema: "public", table: "auction_winners" }, loadAuctions)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
   const EMOJIS = { Equipment: "⚔️", Material: "💎", Consumable: "🧪", Currency: "💰" };
-  const types = ["All", "Equipment", "Material", "Consumable", "Currency"];
+  const types   = ["All", "Equipment", "Material", "Consumable", "Currency"];
   const filtered = auctions.filter(a => filter === "All" || a.type === filter);
 
   const openAdd  = () => { setEditItem(null); setForm({ name: "", type: "Equipment", imageEmoji: "⚔️", highestBid: 0, bidder: "-", hoursLeft: 48 }); setShowModal(true); };
   const openEdit = (a) => { setEditItem(a); setForm({ ...a, hoursLeft: Math.max(0, Math.round((a.endsAt - Date.now()) / 3600000)) }); setShowModal(true); };
-  const handleSave = () => {
+
+  const handleSave = async () => {
     if (!form.name) return;
-    const item = { ...form, highestBid: +form.highestBid, imageEmoji: EMOJIS[form.type] || form.imageEmoji };
-    if (editItem) setAuctions(auctions.map(a => a.id === editItem.id ? { ...item, id: a.id, endsAt: Date.now() + +form.hoursLeft * 3600000 } : a));
-    else setAuctions([...auctions, { ...item, id: Date.now(), endsAt: Date.now() + +form.hoursLeft * 3600000 }]);
+    const endsAt = new Date(Date.now() + +form.hoursLeft * 3600000).toISOString();
+    const payload = {
+      name:        form.name,
+      type:        form.type,
+      image_emoji: EMOJIS[form.type] || form.imageEmoji,
+      highest_bid: +form.highestBid,
+      bidder:      form.bidder || "-",
+      ends_at:     endsAt,
+    };
+    if (editItem) {
+      await supabase.from("events").update(payload).eq("id", editItem.id);
+    } else {
+      await supabase.from("events").insert([payload]);
+    }
     setShowModal(false);
   };
-  const handleDelete = (id) => setAuctions(auctions.filter(a => a.id !== id));
-  const openBid = (item) => { setBidModal(item); setBidForm({ amount: item.highestBid + 10, bidder: currentUser.display }); };
-  const confirmBid = () => { setAuctions(auctions.map(a => a.id === bidModal.id ? { ...a, highestBid: +bidForm.amount, bidder: bidForm.bidder || "Anonymous" } : a)); setBidModal(null); };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Delete this auction item?")) {
+      await supabase.from("events").delete().eq("id", id);
+    }
+  };
+
+  const openBid   = (item) => { setBidModal(item); setBidForm({ amount: item.highestBid + 10, bidder: currentUser.display }); };
+
+  const confirmBid = async () => {
+    if (+bidForm.amount <= bidModal.highestBid) return;
+    // Update the events table
+    await supabase.from("events").update({ highest_bid: +bidForm.amount, bidder: bidForm.bidder || "Anonymous" }).eq("id", bidModal.id);
+    // Also record in auction_winners for history
+    await supabase.from("auction_winners").insert([{
+      item_id:   bidModal.id,
+      item_name: bidModal.name,
+      bidder:    bidForm.bidder || "Anonymous",
+      amount:    +bidForm.amount,
+    }]).then(() => {});  // non-blocking, ignore if table schema differs
+    setBidModal(null);
+  };
+
   const getTimeColor = (endsAt) => { const diff = endsAt - now; if (diff < 3600000) return "#f87171"; if (diff < 86400000) return "#fbbf24"; return "#9ca3af"; };
+
+  if (loading) return <div style={{ color: "#6b7280", textAlign: "center", padding: "40px" }}>Loading auctions…</div>;
 
   return (
     <div>
@@ -576,6 +784,13 @@ function AuctionTab({ auctions, setAuctions, role, currentUser }) {
         </div>
         {can(role, "addAuction") && <button onClick={openAdd} style={btnStyle("#1e3a8a", "#a5b4fc")}>+ Add Item</button>}
       </div>
+
+      {auctions.length === 0 && (
+        <div style={{ color: "#6b7280", textAlign: "center", padding: "40px" }}>
+          No auction items yet.{can(role, "addAuction") ? " Click \"+ Add Item\" to create one." : ""}
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "14px" }}>
         {filtered.map(item => {
           const ended = item.endsAt < now;
@@ -600,6 +815,7 @@ function AuctionTab({ auctions, setAuctions, role, currentUser }) {
           );
         })}
       </div>
+
       {showModal && (
         <Modal onClose={() => setShowModal(false)}>
           <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>{editItem ? "Edit Item" : "Add Auction Item"}</h2>
@@ -616,6 +832,7 @@ function AuctionTab({ auctions, setAuctions, role, currentUser }) {
           </div>
         </Modal>
       )}
+
       {bidModal && (
         <Modal onClose={() => setBidModal(null)}>
           <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>🏆 Place Bid — {bidModal.name}</h2>
@@ -637,22 +854,39 @@ function AuctionTab({ auctions, setAuctions, role, currentUser }) {
 // MAIN APP
 // ============================================================
 export default function GuildTracker() {
-  const [currentUser, setCurrentUser] = useState(() => { try { const saved = localStorage.getItem("guild_user"); return saved ? JSON.parse(saved) : null; } catch { return null; } });
-  const [tab, setTab] = useState("members");
-  const [members, setMembers]   = useState(MEMBERS_DEFAULT);
-  const [bosses, setBosses]     = useState(BOSSES_DEFAULT);
-  const [auctions, setAuctions] = useState(AUCTIONS_DEFAULT);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { const saved = localStorage.getItem("guild_user"); return saved ? JSON.parse(saved) : null; } catch { return null; }
+  });
+  const [tab, setTab]     = useState("members");
+  const [bosses, setBosses] = useState(BOSSES_DEFAULT);
 
-  if (!currentUser) return <LoginPage onLogin={(user) => { setCurrentUser(user); localStorage.setItem("guild_user", JSON.stringify(user)); }} />;
+  // Re-verify user from DB on mount (catches role changes / approval revocations)
+  useEffect(() => {
+    if (!currentUser) return;
+    supabase.from("users").select("*").eq("id", currentUser.id).maybeSingle().then(({ data }) => {
+      if (!data || data.role === "pending") {
+        setCurrentUser(null);
+        localStorage.removeItem("guild_user");
+      } else if (data.role !== currentUser.role) {
+        const updated = { ...currentUser, ...data };
+        setCurrentUser(updated);
+        localStorage.setItem("guild_user", JSON.stringify(updated));
+      }
+    });
+  }, []);
+
+  if (!currentUser) {
+    return <LoginPage onLogin={(user) => { setCurrentUser(user); localStorage.setItem("guild_user", JSON.stringify(user)); }} />;
+  }
 
   const role = currentUser.role;
-  const rc = roleColors[role];
+  const rc   = roleColors[role] || roleColors.member;
 
   const tabs = [
-    { id: "members", label: "👥 Members",      count: members.length },
-    { id: "bosses",  label: "👹 Boss Timer",    count: null },
-    { id: "auction", label: "🏆 Auction House", count: auctions.filter(a => a.endsAt > Date.now()).length },
-    ...(can(role, "manageUsers") ? [{ id: "users", label: "🔐 Manage Users", count: null }] : []),
+    { id: "members", label: "👥 Members" },
+    { id: "bosses",  label: "👹 Boss Timer" },
+    { id: "auction", label: "🏆 Auction House" },
+    ...(can(role, "manageUsers") ? [{ id: "users", label: "🔐 Manage Users" }] : []),
   ];
 
   return (
@@ -675,16 +909,16 @@ export default function GuildTracker() {
           <div style={{ display: "flex", gap: "4px", marginTop: "12px", flexWrap: "wrap" }}>
             {tabs.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "10px 20px", background: tab === t.id ? "#1f2937" : "transparent", border: "none", borderBottom: tab === t.id ? "2px solid #3b82f6" : "2px solid transparent", color: tab === t.id ? "#f3f4f6" : "#6b7280", cursor: "pointer", fontSize: "14px", fontWeight: tab === t.id ? "600" : "400", borderRadius: "6px 6px 0 0" }}>
-                {t.label} {t.count !== null && <span style={{ background: "#374151", color: "#9ca3af", fontSize: "11px", padding: "1px 7px", borderRadius: "20px", marginLeft: "6px" }}>{t.count}</span>}
+                {t.label}
               </button>
             ))}
           </div>
         </div>
       </div>
       <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "24px" }}>
-        {tab === "members" && <MembersTab members={members} setMembers={setMembers} role={role} />}
+        {tab === "members" && <MembersTab role={role} />}
         {tab === "bosses"  && <BossTimerTab bosses={bosses} setBosses={setBosses} role={role} />}
-        {tab === "auction" && <AuctionTab auctions={auctions} setAuctions={setAuctions} role={role} currentUser={currentUser} />}
+        {tab === "auction" && <AuctionTab role={role} currentUser={currentUser} />}
         {tab === "users"   && can(role, "manageUsers") && <UsersTab currentUser={currentUser} />}
       </div>
     </div>
