@@ -320,7 +320,7 @@ function MembersTab({ members, setMembers, role }) {
   };
   const handleDelete = (id) => setMembers(members.filter(m => m.id !== id));
   const handleSort = (col) => { if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortBy(col); setSortDir("desc"); } };
-  const sorted = [...members].sort((a, b) => { const v = sortDir === "asc" ? 1 : -1; return typeof a[sortBy] === "number" ? (a[sortBy] - b[sortBy]) * v : String(a[sortBy]).localeCompare(String(b[sortBy])) * v; });
+  const sorted = [...members].sort((a, b) => { const v = sortDir === "asc" ? 1 : -1; const aVal = a[sortBy] ?? 0; const bVal = b[sortBy] ?? 0; return typeof aVal === "number" ? (aVal - bVal) * v : String(aVal).localeCompare(String(bVal)) * v; });
   const handleImport = () => {
     const lines = importText.trim().split("\n").filter(Boolean);
     const imported = lines.map((line, i) => { const c = line.split(/\t|,/); return { id: Date.now() + i, name: c[0]?.trim() || "Unknown", class: c[1]?.trim() || "Warrior", position: c[2]?.trim() || "Member", growthPower: parseFloat(c[3]) || 0, multiplier: parseFloat(c[4]) || 1, points: parseFloat(c[5]) || 0, activity: c[6]?.trim() || "Active", comment: c[7]?.trim() || "" }; });
@@ -362,8 +362,8 @@ function MembersTab({ members, setMembers, role }) {
                   <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "600" }}>{m.name}</td>
                   <td style={{ padding: "10px 8px", color: "#9ca3af" }}>{m.class}</td>
                   <td style={{ padding: "10px 8px" }}><span style={{ background: pc.bg, color: pc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
-                  <td style={{ padding: "10px 8px", color: "#e5e7eb" }}>{m.growthPower.toLocaleString()}</td>
-                  <td style={{ padding: "10px 8px", color: "#fbbf24" }}>x{m.multiplier.toFixed(2)}</td>
+                  <td style={{ padding: "10px 8px", color: "#e5e7eb" }}>{(m.growthPower ?? 0).toLocaleString()}</td>
+                  <td style={{ padding: "10px 8px", color: "#fbbf24" }}>x{(m.multiplier ?? 0).toFixed(2)}</td>
                   <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>
                     {getPoints(m.name)}
                     {role === "admin" && (
