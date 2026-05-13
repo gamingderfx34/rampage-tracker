@@ -115,7 +115,39 @@ function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+const [regForm, setRegForm] = useState({ display: "", username: "", password: "" });
+const [regError, setRegError] = useState("");
 
+const handleRegister = async () => {
+  if (!regForm.username || !regForm.password || !regForm.display) {
+    setRegError("Please fill in all fields.");
+    return;
+  }
+  const { data: existing } = await supabase
+    .from("users")
+    .select("*")
+    .eq("username", regForm.username)
+    .maybeSingle();
+
+  if (existing) {
+    setRegError("Username already taken.");
+    return;
+  }
+
+  const { error } = await supabase.from("users").insert([{
+    username: regForm.username,
+    password: regForm.password,
+    display: regForm.display,
+    role: "member"
+  }]);
+
+  if (error) {
+    setRegError("Registration failed. Try again.");
+  } else {
+    setIsRegistering(false);
+    setError("✅ Account created! You can now log in.");
+  }
+};
   const handleLogin = async () => {
     const { data: user } = await supabase.from("users").select("*").eq("username", username).eq("password", password).maybeSingle()
     if (user) { setError(""); onLogin(user); }
