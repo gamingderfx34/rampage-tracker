@@ -109,8 +109,8 @@ const activityColors = {
   Inactive: { bg: T.bg3,    text: T.textMuted, dot: T.textMuted },
 };
 const roleColors = {
-  admin:   { bg: "#3a0a0a", text: "#fca5a5", label: "👑 Admin"    },
-  leader:  { bg: "#3a2003", text: "#fcd34d", label: "🛡️ Leader"  },
+  admin:   { bg: "#3a0a0a", text: "#fca5a5", label: "🛠️ Creator"    },
+  leader:  { bg: "#3a2003", text: "#fcd34d", label: "👑️ Leader"  },
   elder:   { bg: "#0d1f3a", text: "#60a5fa", label: "⚔️ Elder"    },
   member:  { bg: T.bg3,    text: T.textSub,  label: "👤 Member"  },
   pending: { bg: T.bg3,    text: T.textMuted, label: "⏳ Pending" },
