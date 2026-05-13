@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { supabase } from "./supabase";
 
 // ============================================================
 // USER ACCOUNTS — Edit these to set your guild's credentials
@@ -6,7 +7,7 @@ import { useState, useEffect } from "react";
 const USERS = [
   { username: "admin",    password: "akosiderf",   role: "admin",   display: "Admin" },
   { username: "leader1",  password: "leader123",  role: "leader",  display: "VALIANT" },
-  { username: "elder1",   password: "elder123",   role: "elder",   display: "XJINNN" },
+  { username: "xjinnn",   password: "elder1",   role: "elder",   display: "XJINNN" },
   { username: "elder2",   password: "elder456",   role: "elder",   display: "CHMB" },
   { username: "member1",  password: "member123",  role: "member",  display: "xILOVEHER" },
   { username: "member2",  password: "member456",  role: "member",  display: "Bakiハンマー" },
@@ -112,8 +113,8 @@ function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
 
-  const handleLogin = () => {
-    const user = USERS.find(u => u.username === username && u.password === password);
+  const handleLogin = async () => {
+    const { data: user } = await supabase.from("users").select("*").eq("username", username).eq("password", password).maybeSingle()
     if (user) { setError(""); onLogin(user); }
     else setError("❌ Invalid username or password!");
   };
