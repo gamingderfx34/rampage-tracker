@@ -1099,7 +1099,6 @@ export default function GuildTracker() {
       loadLiveGuildMembers();
     }
   }, [currentUser]);
-
   return (
     <div style={{ minHeight: "100vh", background: "#0d1117", fontFamily: "'Segoe UI', system-ui, sans-serif", color: "#f3f4f6" }}>
       <div style={{ background: "#0f1320", borderBottom: "1px solid #1f2937", padding: "0 24px" }}>
