@@ -4,16 +4,7 @@ import { supabase } from "./supabase";
 // ============================================================
 // USER ACCOUNTS — Edit these to set your guild's credentials
 // ============================================================
-const USERS = [
-  { username: "admin",    password: "akosiderf",   role: "admin",   display: "Admin" },
-  { username: "valiant",  password: "leader123",  role: "leader",  display: "VALIANT" },
-  { username: "xjinnn",   password: "elder1",   role: "elder",   display: "XJINNN" },
-  { username: "chmb",   password: "elder456",   role: "elder",   display: "CHMB" },
-  { username: "xiloveher",  password: "member123",  role: "member",  display: "xILOVEHER" },
-  { username: "baki",  password: "member456",  role: "member",  display: "Bakiハンマー" },
-  { username: "yujiro",  password: "member789",  role: "member",  display: "Yujiroカンマ" },
-  { username: "xlucypearl",  password: "member000",  role: "member",  display: "xLucyPearl" },
-];
+
 
 // ROLE PERMISSIONS
 const CAN = {
@@ -123,11 +114,19 @@ function LoginPage({ onLogin }) {
     else { setIsRegistering(false); setError("✅ Account created! You can now log in."); }
   };
 
-  const handleLogin = async () => {
+    const handleLogin = async () => {
     const { data: user } = await supabase.from("users").select("*").eq("username", username).eq("password", password).maybeSingle();
-    if (user) { setError(""); onLogin(user); }
-    else setError("❌ Invalid username or password!");
+    if (user) {
+      if (!user.is_approved) {
+        setError("❌ Your account is pending admin approval.");
+        return;
+      }
+      setError(""); 
+      onLogin(user); 
+    }
+    else setError("❌ Invalid username or password");
   };
+
 
   return (
     <div style={{ minHeight: "100vh", background: "#0d1117", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
