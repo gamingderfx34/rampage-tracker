@@ -580,13 +580,13 @@ function AuctionTab({ auctions, setAuctions, role, currentUser }) {
 // MAIN APP
 // ============================================================
 export default function GuildTracker() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => { try { const saved = localStorage.getItem("guild_user"); return saved ? JSON.parse(saved) : null; } catch { return null; } });
   const [tab, setTab] = useState("members");
   const [members, setMembers]   = useState(MEMBERS_DEFAULT);
   const [bosses, setBosses]     = useState(BOSSES_DEFAULT);
   const [auctions, setAuctions] = useState(AUCTIONS_DEFAULT);
 
-  if (!currentUser) return <LoginPage onLogin={setCurrentUser} />;
+  if (!currentUser) return <LoginPage onLogin={(user) => { setCurrentUser(user); localStorage.setItem("guild_user", JSON.stringify(user)); }} />;
 
   const role = currentUser.role;
   const rc = roleColors[role];
@@ -612,7 +612,7 @@ export default function GuildTracker() {
                 <div style={{ color: "#f3f4f6", fontWeight: "600", fontSize: "14px" }}>{currentUser.display}</div>
                 <span style={{ background: rc.bg, color: rc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "11px" }}>{rc.label}</span>
               </div>
-              <button onClick={() => setCurrentUser(null)} style={{ background: "#7f1d1d", border: "1px solid #f8717133", color: "#fca5a5", padding: "8px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>Logout</button>
+              <button onClick={() => { setCurrentUser(null); localStorage.removeItem("guild_user"); }} style={{ background: "#7f1d1d", border: "1px solid #f8717133", color: "#fca5a5", padding: "8px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>Logout</button>
             </div>
           </div>
           <div style={{ display: "flex", gap: "4px", marginTop: "12px", flexWrap: "wrap" }}>
