@@ -1076,15 +1076,18 @@ export default function GuildTracker() {
 const role = currentUser?.role || "member";
 const rc = roleColors[role] || roleColors["member"];
 
-const tabs = [
-  { id: "members",    label: "👥 Members",        count: members && members.length ? members.length : 0 },
-  { id: "attendance", label: "📅 Attendance",     count: null },
-  { id: "bosses",     label: "🌋 Boss Timer",     count: null },
-  { id: "auction",    label: "🏆 Auction House",  count: null },
-  { id: "winners",    label: "🥇 Winners",        count: null },
-];
-
+  const tabs = [
+    { id: "members",    label: "👥 Members",        count: members && members.length ? members.length : 0 },
+    { id: "attendance", label: "📅 Attendance",     count: null },
+    { id: "bosses",     label: "🌋 Boss Timer",     count: null },
+    { id: "auction",    label: "🏆 Auction House",  count: null },
+    { id: "winners",    label: "🥇 Winners",        count: null }
   ];
+
+  if (can(role, "manageUsers")) {
+    tabs.push({ id: "users", label: "💼 Manage Users", count: null });
+  }
+
    useEffect(() => {
     const loadLiveGuildMembers = async () => {
       const { data, error } = await supabase
