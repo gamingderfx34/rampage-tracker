@@ -275,8 +275,8 @@ function LoginPage({ onLogin }) {
             <div key={role} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ background: c.bg, color: c.text, padding: "2px 8px", borderRadius: "20px", fontSize: "11px", minWidth: "72px", textAlign: "center" }}>{c.label}</span>
               <span style={{ color: T.textMuted, fontSize: "11px" }}>
-                {role === "Creator"  && "xILOVEHER"}
-                {role === "leader" && "VALIANT"}
+                {role === "Creator"&& <b>"xILOVEHER"</b>}
+                {role === "leader" && <b>"VALIANT"</b>}
                 {role === "elder"  && "       "}
                 {role === "member" && "       "}
               </span>
