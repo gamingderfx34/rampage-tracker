@@ -6,11 +6,13 @@ import { supabase } from "./supabase";
 // ============================================================
 const USERS = [
   { username: "admin",    password: "akosiderf",   role: "admin",   display: "Admin" },
-  { username: "leader1",  password: "leader123",  role: "leader",  display: "VALIANT" },
+  { username: "valiant",  password: "leader123",  role: "leader",  display: "VALIANT" },
   { username: "xjinnn",   password: "elder1",   role: "elder",   display: "XJINNN" },
-  { username: "elder2",   password: "elder456",   role: "elder",   display: "CHMB" },
-  { username: "member1",  password: "member123",  role: "member",  display: "xILOVEHER" },
-  { username: "member2",  password: "member456",  role: "member",  display: "Bakiハンマー" },
+  { username: "chmb",   password: "elder456",   role: "elder",   display: "CHMB" },
+  { username: "xiloveher",  password: "member123",  role: "member",  display: "xILOVEHER" },
+  { username: "baki",  password: "member456",  role: "member",  display: "Bakiハンマー" },
+  { username: "yujiro",  password: "member789",  role: "member",  display: "Yujiroカンマ" },
+  { username: "xlucypearl",  password: "member000",  role: "member",  display: "xLucyPearl" },
 ];
 
 // ROLE PERMISSIONS
