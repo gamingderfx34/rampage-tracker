@@ -1076,13 +1076,14 @@ export default function GuildTracker() {
 const role = currentUser?.role || "member";
 const rc = roleColors[role] || roleColors["member"];
 
-  const tabs = [
-    { id: "members",    label: "👥 Members",         count: members && members.length ? members.length : 0,
-    { id: "attendance", label: "📋 Attendance",       count: null },
-    { id: "bosses",     label: "👹 Boss Timer",       count: null },
-    { id: "auction",    label: "🏆 Auction House",    count: null },
-    { id: "winners",    label: "🥇 Winners",          count: null },
-    ...(can(role, "manageUsers") ? [{ id: "users", label: "🔐 Manage Users", count: null }] : []),
+const tabs = [
+  { id: "members",    label: "👥 Members",        count: members && members.length ? members.length : 0 },
+  { id: "attendance", label: "📅 Attendance",     count: null },
+  { id: "bosses",     label: "🌋 Boss Timer",     count: null },
+  { id: "auction",    label: "🏆 Auction House",  count: null },
+  { id: "winners",    label: "🥇 Winners",        count: null },
+];
+
   ];
    useEffect(() => {
     const loadLiveGuildMembers = async () => {
