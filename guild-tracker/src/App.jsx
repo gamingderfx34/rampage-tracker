@@ -277,8 +277,8 @@ function LoginPage({ onLogin }) {
               <span style={{ color: "#e8eaf0", fontSize: "13px", fontWeight: "700", letterSpacing: "0.04em" }}>
                 {role === "admin"  && <strong style={{ color: "#fca5a5" }}>xILOVEHER</strong>}
                 {role === "leader" && <strong style={{ color: "#fcd34d" }}>VALIANT</strong>}
-                {role === "elder"  && ""}
-                {role === "member" && ""}
+                {role === "elder"  && <strong style={{ color: "#fca5a5" }}>xJINN, CHMB, xLUCYPEARL, YUJIRO</strong>}
+                {role === "member" && <strong style={{ color: "#fca5a5" }}>RAMPAGE</strong>}
               </span>
             </div>
           ))}
