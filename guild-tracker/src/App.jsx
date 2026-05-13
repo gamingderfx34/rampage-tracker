@@ -113,7 +113,7 @@ function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
 
-  const handleLogin = async () => {
+  const [isRegistering, setIsRegistering] = useState(false);
     const { data: user } = await supabase.from("users").select("*").eq("username", username).eq("password", password).maybeSingle()
     if (user) { setError(""); onLogin(user); }
     else setError("❌ Invalid username or password!");
@@ -125,7 +125,7 @@ function LoginPage({ onLogin }) {
         <div style={{ textAlign: "center", marginBottom: "32px" }}>
           <div style={{ fontSize: "48px", marginBottom: "12px" }}>⚔️</div>
           <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Guild Tracker</h1>
-          <p style={{ color: "#6b7280", fontSize: "14px", margin: "6px 0 0" }}>Sign in to your guild account</p>
+          <p style={{ color: "#6b7280", fontSize: "14px", margin: "6px 0 0" }}>{isRegistering ? "Create a new account" : "Sign in to your guild account"}</p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <label style={labelStyle}>
@@ -141,6 +141,13 @@ function LoginPage({ onLogin }) {
           </label>
           {error && <div style={{ color: "#f87171", fontSize: "13px", textAlign: "center" }}>{error}</div>}
           <button onClick={handleLogin} style={{ ...btnStyle("#1e3a8a", "#a5b4fc"), width: "100%", padding: "12px", fontSize: "15px" }}>Login</button>
+        {isRegistering && <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+          <input placeholder='Display Name' value={regForm.display} onChange={e => setRegForm({...regForm, display: e.target.value})} style={inputStyle} />
+          <input placeholder='Username' value={regForm.username} onChange={e => setRegForm({...regForm, username: e.target.value})} style={inputStyle} />
+          <input type='password' placeholder='Password' value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} style={inputStyle} />
+          {regError && <div style={{ color: '#f87171', fontSize: '13px' }}>{regError}</div>}
+          <button onClick={handleRegister} style={{ background: '#1e3a8a', color: '#a5b4fc', border: 'none', borderRadius: '8px', width: '100%', padding: '12px', fontSize: '15px', cursor: 'pointer' }}>Register</button>
+        </div>}<button onClick={() => { setIsRegistering(!isRegistering); setError(""); setRegError(""); }} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "13px", cursor: "pointer", marginTop: "8px" }}>{isRegistering ? "Back to Login" : "Register new account"}</button>
         </div>
         <div style={{ marginTop: "24px", padding: "16px", background: "#0f1320", borderRadius: "8px" }}>
           <p style={{ color: "#6b7280", fontSize: "12px", margin: "0 0 8px", fontWeight: "600" }}>ROLE PERMISSIONS</p>
