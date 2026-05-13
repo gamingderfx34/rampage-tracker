@@ -275,7 +275,7 @@ function LoginPage({ onLogin }) {
             <div key={role} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ background: c.bg, color: c.text, padding: "2px 8px", borderRadius: "20px", fontSize: "11px", minWidth: "72px", textAlign: "center" }}>{c.label}</span>
               <span style={{ color: T.textMuted, fontSize: "11px" }}>
-                {role === "admin"  && "Full access + manage users"}
+                {role === "admin"  && "Creator"}
                 {role === "leader" && "Edit members, bosses, auctions, attendance"}
                 {role === "elder"  && "Kill bosses, place bids"}
                 {role === "member" && "View + check in + place bids"}
