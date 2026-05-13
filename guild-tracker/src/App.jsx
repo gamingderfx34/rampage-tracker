@@ -1073,11 +1073,11 @@ export default function GuildTracker() {
 
   if (!currentUser) return <LoginPage onLogin={(user) => { setCurrentUser(user); localStorage.setItem("guild_user", JSON.stringify(user)); }} />;
 
-  const role = currentUser.role;
-  const rc = roleColors[role];
+const role = currentUser?.role || "member";
+const rc = roleColors[role] || roleColors["member"];
 
   const tabs = [
-    { id: "members",    label: "👥 Members",         count: members.length },
+    { id: "members",    label: "👥 Members",         count: members && members.length ? members.length : 0,
     { id: "attendance", label: "📋 Attendance",       count: null },
     { id: "bosses",     label: "👹 Boss Timer",       count: null },
     { id: "auction",    label: "🏆 Auction House",    count: null },
