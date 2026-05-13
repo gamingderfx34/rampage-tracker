@@ -357,12 +357,7 @@ const resetPoints = async (memberName) => {
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
-            <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>
-  {getPoints(m.name)}
-  {role === "admin" && (
-    <button onClick={() => resetPoints(m.name)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "11px", marginLeft: "6px" }}>↺ Reset</button>
-  )}
-</td>
+            <tr>
               {[["#", null], ["Character Name", "name"], ["Class", "class"], ["Position", "position"], ["Growth Power", "growthPower"], ["Multiplier", "multiplier"], ["Points", "points"], ["Activity", "activity"], ["Comment", "comment"], ...(can(role, "editMembers") ? [["Action", null]] : [])].map(([label, col]) => (
                 <th key={label} onClick={() => col && handleSort(col)} style={{ padding: "10px 8px", color: "#9ca3af", fontWeight: "500", textAlign: "left", cursor: col ? "pointer" : "default", whiteSpace: "nowrap", userSelect: "none" }}>
                   {label} {col && sortBy === col ? (sortDir === "asc" ? "↑" : "↓") : ""}
