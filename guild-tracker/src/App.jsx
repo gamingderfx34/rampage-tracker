@@ -1,22 +1,30 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./supabase";
 
 // ============================================================
 // USER ACCOUNTS — Edit these to set your guild's credentials
 // ============================================================
-
+const USERS = [
+  { username: "admin",    password: "akosiderf",   role: "admin",   display: "Admin" },
+  { username: "valiant",  password: "leader123",  role: "leader",  display: "VALIANT" },
+  { username: "xjinnn",   password: "elder1",   role: "elder",   display: "XJINNN" },
+  { username: "chmb",   password: "elder456",   role: "elder",   display: "CHMB" },
+  { username: "xiloveher",  password: "member123",  role: "member",  display: "xILOVEHER" },
+  { username: "baki",  password: "member456",  role: "member",  display: "Bakiハンマー" },
+  { username: "yujiro",  password: "member789",  role: "member",  display: "Yujiroカンマ" },
+  { username: "xlucypearl",  password: "member000",  role: "member",  display: "xLucyPearl" },
+];
 
 // ROLE PERMISSIONS
 const CAN = {
-  editMembers:   ["admin", "leader"],
-  deleteMembers: ["admin", "leader"],
-  killBoss:      ["admin", "leader", "elder"],
-  editBoss:      ["admin", "leader", "elder", "member"],
-  addAuction:    ["admin", "leader"],
-  editAuction:   ["admin", "leader"],
-  placeBid:      ["admin", "leader", "elder", "member"],
-  manageUsers:   ["admin"],
-  markAttendance:["admin", "leader"],
+  editMembers:  ["admin", "leader"],
+  deleteMembers:["admin", "leader"],
+  killBoss:     ["admin", "leader", "elder"],
+  editBoss:     ["admin", "leader", "elder", "member"],
+  addAuction:   ["admin", "leader"],
+  editAuction:  ["admin", "leader"],
+  placeBid:     ["admin", "leader", "elder", "member"],
+  manageUsers:  ["admin"],
 };
 const can = (role, action) => CAN[action]?.includes(role);
 
@@ -35,19 +43,29 @@ const BOSSES_DEFAULT = [
   { id: 6, name: "Lv. 67 Ethernal Destroyer Amot- Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
   { id: 7, name: "Lv. 68 Ruthless Destroyer Hawler- Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
   { id: 8, name: "Lv. 69 Assulter of Tombs Laudd- Kings Tomb 1F",   color: "#4a90d9", respawnMin: 30, respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 2 },
+  
 ];
 
 const MEMBERS_DEFAULT = [
-  { id: 1,  name: "VALIANT",       class: "Skald",       position: "Leader", growthPower: 222408, multiplier: 2.23, points: 223.71, activity: "Active",   comment: "" },
+  { id: 1,  name: "VALIANT",       class: "Skald",     position: "Leader", growthPower: 222408, multiplier: 2.23, points: 223.71, activity: "Active",   comment: "" },
   { id: 2,  name: "두부우우우우",   class: "Archer",      position: "Elder",  growthPower: 260786, multiplier: 2.61, points: 233.80, activity: "Active",   comment: "" },
-  { id: 3,  name: "xJiinnn",       class: "Archer",      position: "Elder",  growthPower: 272785, multiplier: 2.73, points: 213.47, activity: "Active",   comment: "" },
-  { id: 4,  name: "Kiree",         class: "Skald",       position: "Elder",  growthPower: 221026, multiplier: 2.21, points: 141.37, activity: "Active",   comment: "" },
-  { id: 5,  name: "Squee",         class: "RuneFighter", position: "Elder",  growthPower: 213180, multiplier: 2.13, points: 122.18, activity: "Active",   comment: "" },
-  { id: 6,  name: "Yujiroカンマ",  class: "RuneFighter", position: "Elder",  growthPower: 205106, multiplier: 2.05, points: 103.45, activity: "Inactive", comment: "" },
-  { id: 7,  name: "chmb",          class: "Archer",      position: "Elder",  growthPower: 208325, multiplier: 2.08, points: 66.53,  activity: "Inactive", comment: "" },
-  { id: 8,  name: "xLucyPearl",    class: "Archer",      position: "Elder",  growthPower: 179550, multiplier: 1.80, points: 144.26, activity: "Active",   comment: "" },
-  { id: 9,  name: "BL4iR",         class: "Warlord",     position: "Elder",  growthPower: 190526, multiplier: 1.91, points: 141.41, activity: "Active",   comment: "" },
-  { id: 10, name: "Bakiハンマー",   class: "Skald",       position: "Member", growthPower: 124966, multiplier: 1.25, points: 138.25, activity: "Active",   comment: "" },
+  { id: 3,  name: "xJiinnn",   class: "Archer",    position: "Elder",  growthPower: 272785, multiplier: 2.73, points: 213.47, activity: "Active",   comment: "" },
+  { id: 4,  name: "Kiree",   class: "Skald",   position: "Elder",  growthPower: 221026, multiplier: 2.21, points: 141.37, activity: "Active",   comment: "" },
+  { id: 5,  name: "Squee",     class: "RuneFighter",      position: "Elder",  growthPower: 213180, multiplier: 2.13, points: 122.18, activity: "Active",   comment: "" },
+  { id: 6,  name: "Yujiroカンマ",         class: "RuneFighter",  position: "Elder",  growthPower: 205106, multiplier: 2.05, points: 103.45, activity: "Inactive", comment: "" },
+  { id: 7,  name: "chmb",   class: "Archer",   position: "Elder",  growthPower: 208325, multiplier: 2.08, points: 66.53,  activity: "Inactive", comment: "" },
+  { id: 8,  name: "xLucyPearl",  class: "Archer",    position: "Elder", growthPower: 179550, multiplier: 1.80, points: 144.26, activity: "Active",   comment: "" },
+  { id: 9,  name: "BL4iR",        class: "Warlord", position: "Elder", growthPower: 190526, multiplier: 1.91, points: 141.41, activity: "Active",   comment: "" },
+  { id: 10, name: "Bakiハンマー",    class: "Skald",    position: "Member", growthPower: 124966, multiplier: 1.25, points: 138.25, activity: "Active",   comment: "" },
+];
+
+const AUCTIONS_DEFAULT = [
+  { id: 1, name: "Kari Helmet",        type: "Equipment",  imageEmoji: "⛑️", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 1  },
+  { id: 2, name: "Muspel Bottom",      type: "Equipment",  imageEmoji: "👖", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 12 },
+  { id: 3, name: "Twilight Stone",     type: "Material",   imageEmoji: "💎", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 24 },
+  { id: 4, name: "Mastering Skill 24pcs", type: "Consumable", imageEmoji: "📜", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 48 },
+  { id: 5, name: "Storm Bracelet",     type: "Equipment",  imageEmoji: "📿", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 48 },
+  { id: 6, name: "Amber Pouch 654pcs", type: "Material",   imageEmoji: "🎒", highestBid: 0, bidder: "-", endsAt: Date.now() + 3600000 * 48 },
 ];
 
 // ============================================================
@@ -73,13 +91,8 @@ function formatCountdown(endsAt) {
   if (diff <= 0) return "Ended";
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
-  const s = Math.floor((diff % 60000) / 1000);
   if (h > 0) return `${h}h ${m}m left`;
-  if (m > 0) return `${m}m ${s}s left`;
-  return `${s}s left`;
-}
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return `${m}m left`;
 }
 
 function Modal({ children, onClose }) {
@@ -102,31 +115,44 @@ function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  const [regForm, setRegForm] = useState({ display: "", username: "", password: "" });
-  const [regError, setRegError] = useState("");
+const [regForm, setRegForm] = useState({ display: "", username: "", password: "" });
+const [regError, setRegError] = useState("");
 
-  const handleRegister = async () => {
-    if (!regForm.username || !regForm.password || !regForm.display) { setRegError("Please fill in all fields."); return; }
-    const { data: existing } = await supabase.from("users").select("*").eq("username", regForm.username).maybeSingle();
-    if (existing) { setRegError("Username already taken."); return; }
-    const { error } = await supabase.from("users").insert([{ username: regForm.username, password: regForm.password, display: regForm.display, role: "member" }]);
-    if (error) setRegError("Registration failed. Try again.");
-    else { setIsRegistering(false); setError("✅ Account created! You can now log in."); }
+const handleRegister = async () => {
+  if (!regForm.username || !regForm.password || !regForm.display) {
+    setRegError("Please fill in all fields.");
+    return;
+  }
+  const { data: existing } = await supabase
+    .from("users")
+    .select("*")
+    .eq("username", regForm.username)
+    .maybeSingle();
+
+  if (existing) {
+    setRegError("Username already taken.");
+    return;
+  }
+
+  const { error } = await supabase.from("users").insert([{
+    username: regForm.username,
+    password: regForm.password,
+    display: regForm.display,
+    role: "member"
+  }]);
+
+  if (error) {
+    setRegError("Registration failed. Try again.");
+  } else {
+    setIsRegistering(false);
+    setError("✅ Account created! You can now log in.");
+  }
+};
+  const handleLogin = async () => {
+    const { data: user } = await supabase.from("users").select("*").eq("username", username).eq("password", password).maybeSingle()
+    if (user) { setError(""); onLogin(user); }
+    else setError("❌ Invalid username or password!");
   };
-
-    const handleLogin = async () => {
-    const { data: user } = await supabase.from("users").select("*").eq("username", username).eq("password", password).maybeSingle();
-    if (user) {
-      if (!user.is_approved) {
-        setError("❌ Your account is pending admin approval.");
-        return;
-      }
-      setError(""); 
-      onLogin(user); 
-    }
-    else setError("❌ Invalid username or password");
-  };
-
 
   return (
     <div style={{ minHeight: "100vh", background: "#0d1117", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
@@ -148,20 +174,15 @@ function LoginPage({ onLogin }) {
               <button onClick={() => setShowPass(!showPass)} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: "16px" }}>{showPass ? "🙈" : "👁️"}</button>
             </div>
           </label>
-          {error && <div style={{ color: error.startsWith("✅") ? "#34d399" : "#f87171", fontSize: "13px", textAlign: "center" }}>{error}</div>}
+          {error && <div style={{ color: "#f87171", fontSize: "13px", textAlign: "center" }}>{error}</div>}
           <button onClick={handleLogin} style={{ ...btnStyle("#1e3a8a", "#a5b4fc"), width: "100%", padding: "12px", fontSize: "15px" }}>Login</button>
-          {isRegistering && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
-              <input placeholder="Display Name" value={regForm.display} onChange={e => setRegForm({...regForm, display: e.target.value})} style={inputStyle} />
-              <input placeholder="Username" value={regForm.username} onChange={e => setRegForm({...regForm, username: e.target.value})} style={inputStyle} />
-              <input type="password" placeholder="Password" value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} style={inputStyle} />
-              {regError && <div style={{ color: "#f87171", fontSize: "13px" }}>{regError}</div>}
-              <button onClick={handleRegister} style={{ background: "#1e3a8a", color: "#a5b4fc", border: "none", borderRadius: "8px", width: "100%", padding: "12px", fontSize: "15px", cursor: "pointer" }}>Register</button>
-            </div>
-          )}
-          <button onClick={() => { setIsRegistering(!isRegistering); setError(""); setRegError(""); }} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "13px", cursor: "pointer", marginTop: "8px" }}>
-            {isRegistering ? "Back to Login" : "Register new account"}
-          </button>
+        {isRegistering && <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+          <input placeholder='Display Name' value={regForm.display} onChange={e => setRegForm({...regForm, display: e.target.value})} style={inputStyle} />
+          <input placeholder='Username' value={regForm.username} onChange={e => setRegForm({...regForm, username: e.target.value})} style={inputStyle} />
+          <input type='password' placeholder='Password' value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} style={inputStyle} />
+          {regError && <div style={{ color: '#f87171', fontSize: '13px' }}>{regError}</div>}
+          <button onClick={handleRegister} style={{ background: '#1e3a8a', color: '#a5b4fc', border: 'none', borderRadius: '8px', width: '100%', padding: '12px', fontSize: '15px', cursor: 'pointer' }}>Register</button>
+        </div>}<button onClick={() => { setIsRegistering(!isRegistering); setError(""); setRegError(""); }} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "13px", cursor: "pointer", marginTop: "8px" }}>{isRegistering ? "Back to Login" : "Register new account"}</button>
         </div>
         <div style={{ marginTop: "24px", padding: "16px", background: "#0f1320", borderRadius: "8px" }}>
           <p style={{ color: "#6b7280", fontSize: "12px", margin: "0 0 8px", fontWeight: "600" }}>ROLE PERMISSIONS</p>
@@ -186,32 +207,22 @@ function LoginPage({ onLogin }) {
 // USER MANAGEMENT (Admin only)
 // ============================================================
 function UsersTab({ currentUser }) {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState(USERS);
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [form, setForm] = useState({ username: "", password: "", role: "member", display: "" });
   const [showPass, setShowPass] = useState(false);
 
-  useEffect(() => {
-    supabase.from("users").select("*").then(({ data }) => { if (data) setUsers(data); });
-  }, []);
-
   const openAdd  = () => { setEditUser(null); setForm({ username: "", password: "", role: "member", display: "" }); setShowModal(true); };
   const openEdit = (u) => { setEditUser(u); setForm({ ...u }); setShowModal(true); };
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!form.username || !form.password) return;
-    if (editUser) {
-      await supabase.from("users").update({ ...form }).eq("username", editUser.username);
-      setUsers(users.map(u => u.username === editUser.username ? { ...form } : u));
-    } else {
-      const { data } = await supabase.from("users").insert([{ ...form }]).select();
-      if (data) setUsers([...users, ...data]);
-    }
+    if (editUser) setUsers(users.map(u => u.username === editUser.username ? { ...form } : u));
+    else setUsers([...users, { ...form }]);
     setShowModal(false);
   };
-  const handleDelete = async (username) => {
+  const handleDelete = (username) => {
     if (username === currentUser.username) return alert("Cannot delete your own account!");
-    await supabase.from("users").delete().eq("username", username);
     setUsers(users.filter(u => u.username !== username));
   };
 
@@ -232,12 +243,12 @@ function UsersTab({ currentUser }) {
           </thead>
           <tbody>
             {users.map((u, i) => {
-              const rc = roleColors[u.role] || roleColors.member;
+              const rc = roleColors[u.role];
               return (
                 <tr key={u.username} style={{ borderBottom: "1px solid #1f2937", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
                   <td style={{ padding: "12px 16px", color: "#f3f4f6", fontWeight: "600" }}>{u.display}</td>
                   <td style={{ padding: "12px 16px", color: "#60a5fa", fontFamily: "monospace" }}>{u.username}</td>
-                  <td style={{ padding: "12px 16px", color: "#6b7280", fontFamily: "monospace" }}>{"•".repeat(u.password?.length || 0)}</td>
+                  <td style={{ padding: "12px 16px", color: "#6b7280", fontFamily: "monospace" }}>{"•".repeat(u.password.length)}</td>
                   <td style={{ padding: "12px 16px" }}><span style={{ background: rc.bg, color: rc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{rc.label}</span></td>
                   <td style={{ padding: "12px 16px" }}>
                     <button onClick={() => openEdit(u)} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", marginRight: "8px" }}>Edit</button>
@@ -248,6 +259,9 @@ function UsersTab({ currentUser }) {
             })}
           </tbody>
         </table>
+      </div>
+      <div style={{ marginTop: "16px", padding: "12px 16px", background: "#7f1d1d22", border: "1px solid #f8717133", borderRadius: "8px", color: "#fca5a5", fontSize: "13px" }}>
+        ⚠️ <strong>Important:</strong> To make user changes permanent, update the USERS array at the top of App.jsx and redeploy.
       </div>
       {showModal && (
         <Modal onClose={() => setShowModal(false)}>
@@ -282,8 +296,25 @@ function UsersTab({ currentUser }) {
 // ============================================================
 // MEMBERS TAB
 // ============================================================
-function MembersTab({ members, setMembers, role }) {
-  const [supabaseUsers, setSupabaseUsers] = useState([]);
+function MembersTab({ members, setMembers, role }) {const [supabaseUsers, setSupabaseUsers] = useState([]);
+
+useEffect(() => {
+  const fetchUsers = async () => {
+    const { data } = await supabase.from("users").select("id, display, points");
+    if (data) setSupabaseUsers(data);
+  };
+  fetchUsers();
+}, []);
+
+const getPoints = (memberName) => {
+  const u = supabaseUsers.find(u => u.display === memberName);
+  return u ? u.points : 0;
+};
+
+const resetPoints = async (memberName) => {
+  await supabase.from("users").update({ points: 0 }).eq("display", memberName);
+  setSupabaseUsers(prev => prev.map(u => u.display === memberName ? { ...u, points: 0 } : u));
+};
   const [showModal, setShowModal] = useState(false);
   const [editMember, setEditMember] = useState(null);
   const [form, setForm] = useState({ name: "", class: "Warrior", position: "Member", growthPower: "", multiplier: "", points: "", activity: "Active", comment: "" });
@@ -291,24 +322,6 @@ function MembersTab({ members, setMembers, role }) {
   const [sortDir, setSortDir] = useState("desc");
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
-
-  useEffect(() => {
-    const fetchUsers = async () => {
-      const { data } = await supabase.from("users").select("id, display, points");
-      if (data) setSupabaseUsers(data);
-    };
-    fetchUsers();
-  }, []);
-
-  const getPoints = (memberName) => {
-    const u = supabaseUsers.find(u => u.display === memberName);
-    return u ? u.points : 0;
-  };
-
-  const resetPoints = async (memberName) => {
-    await supabase.from("users").update({ points: 0 }).eq("display", memberName);
-    setSupabaseUsers(prev => prev.map(u => u.display === memberName ? { ...u, points: 0 } : u));
-  };
 
   const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Warrior", position: "Member", growthPower: "", multiplier: "", points: "", activity: "Active", comment: "" }); setShowModal(true); };
   const openEdit = (m) => { setEditMember(m); setForm({ ...m }); setShowModal(true); };
@@ -320,7 +333,7 @@ function MembersTab({ members, setMembers, role }) {
   };
   const handleDelete = (id) => setMembers(members.filter(m => m.id !== id));
   const handleSort = (col) => { if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortBy(col); setSortDir("desc"); } };
-  const sorted = [...members].sort((a, b) => { const v = sortDir === "asc" ? 1 : -1; const aVal = a[sortBy] ?? 0; const bVal = b[sortBy] ?? 0; return typeof aVal === "number" ? (aVal - bVal) * v : String(aVal).localeCompare(String(bVal)) * v; });
+  const sorted = [...members].sort((a, b) => { const v = sortDir === "asc" ? 1 : -1; return typeof a[sortBy] === "number" ? (a[sortBy] - b[sortBy]) * v : String(a[sortBy]).localeCompare(String(b[sortBy])) * v; });
   const handleImport = () => {
     const lines = importText.trim().split("\n").filter(Boolean);
     const imported = lines.map((line, i) => { const c = line.split(/\t|,/); return { id: Date.now() + i, name: c[0]?.trim() || "Unknown", class: c[1]?.trim() || "Warrior", position: c[2]?.trim() || "Member", growthPower: parseFloat(c[3]) || 0, multiplier: parseFloat(c[4]) || 1, points: parseFloat(c[5]) || 0, activity: c[6]?.trim() || "Active", comment: c[7]?.trim() || "" }; });
@@ -362,14 +375,14 @@ function MembersTab({ members, setMembers, role }) {
                   <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "600" }}>{m.name}</td>
                   <td style={{ padding: "10px 8px", color: "#9ca3af" }}>{m.class}</td>
                   <td style={{ padding: "10px 8px" }}><span style={{ background: pc.bg, color: pc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
-                  <td style={{ padding: "10px 8px", color: "#e5e7eb" }}>{(m.growthPower ?? 0).toLocaleString()}</td>
-                  <td style={{ padding: "10px 8px", color: "#fbbf24" }}>x{(m.multiplier ?? 0).toFixed(2)}</td>
+                  <td style={{ padding: "10px 8px", color: "#e5e7eb" }}>{m.growthPower.toLocaleString()}</td>
+                  <td style={{ padding: "10px 8px", color: "#fbbf24" }}>x{m.multiplier.toFixed(2)}</td>
                   <td style={{ padding: "10px 8px", color: "#f3f4f6", fontWeight: "700" }}>
-                    {getPoints(m.name)}
-                    {role === "admin" && (
-                      <button onClick={() => resetPoints(m.name)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "11px", marginLeft: "6px" }}>↺ Reset</button>
-                    )}
-                  </td>
+  {getPoints(m.name)}
+  {role === "admin" && (
+    <button onClick={() => resetPoints(m.name)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "11px", marginLeft: "6px" }}>↺ Reset</button>
+  )}
+</td>
                   <td style={{ padding: "10px 8px" }}><span style={{ background: ac.bg, color: ac.text, padding: "3px 10px", borderRadius: "20px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}><span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ac.dot }}></span>{m.activity}</span></td>
                   <td style={{ padding: "10px 8px", color: "#9ca3af", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.comment || "—"}</td>
                   {can(role, "editMembers") && (
@@ -524,130 +537,36 @@ function BossTimerTab({ bosses, setBosses, role }) {
 }
 
 // ============================================================
-// AUCTION TAB — Live bids via Supabase, persistent, anti-snipe
+// AUCTION TAB
 // ============================================================
-// Requires a Supabase table: auctions
-//   id (int8, primary key), name (text), type (text), image_emoji (text),
-//   highest_bid (int8 default 0), bidder (text default '-'),
-//   ends_at (int8), created_at (timestamptz)
-// And a table: auction_winners
-//   id (int8), name (text), type (text), image_emoji (text),
-//   highest_bid (int8), bidder (text), ended_at (int8)
-
-// Anti-snipe: if a bid comes in within SNIPE_WINDOW ms of end, extend by SNIPE_EXTEND ms
-const SNIPE_WINDOW = 5 * 60 * 1000;   // 5 minutes
-const SNIPE_EXTEND = 5 * 60 * 1000;   // extend by 5 minutes
-
-function AuctionTab({ role, currentUser }) {
-  const [auctions, setAuctions] = useState([]);
+function AuctionTab({ auctions, setAuctions, role, currentUser }) {
   const [now, setNow] = useState(Date.now());
   const [filter, setFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const [form, setForm] = useState({ name: "", type: "Equipment", image_emoji: "⚔️", highest_bid: 0, bidder: "-", hoursLeft: 48 });
+  const [form, setForm] = useState({ name: "", type: "Equipment", imageEmoji: "⚔️", highestBid: 0, bidder: "-", hoursLeft: 48 });
   const [bidModal, setBidModal] = useState(null);
   const [bidForm, setBidForm] = useState({ amount: "", bidder: "" });
-  const [loading, setLoading] = useState(true);
-  const [timeEditModal, setTimeEditModal] = useState(null);
-  const [timeEditForm, setTimeEditForm] = useState({ hours: 0, minutes: 0 });
 
-  // Load auctions from Supabase
-  const loadAuctions = async () => {
-    const { data } = await supabase.from("auctions").select("*").order("id");
-    if (data) setAuctions(data);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadAuctions();
-    // Real-time subscription
-    const channel = supabase
-      .channel("auctions-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "auctions" }, () => { loadAuctions(); })
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, []);
-
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
 
   const EMOJIS = { Equipment: "⚔️", Material: "💎", Consumable: "🧪", Currency: "💰" };
   const types = ["All", "Equipment", "Material", "Consumable", "Currency"];
   const filtered = auctions.filter(a => filter === "All" || a.type === filter);
 
-  const openAdd  = () => { setEditItem(null); setForm({ name: "", type: "Equipment", image_emoji: "⚔️", highest_bid: 0, bidder: "-", hoursLeft: 48 }); setShowModal(true); };
-  const openEdit = (a) => {
-    setEditItem(a);
-    const hoursLeft = Math.max(0, ((a.ends_at - Date.now()) / 3600000)).toFixed(2);
-    setForm({ ...a, hoursLeft });
-    setShowModal(true);
-  };
-
-  const handleSave = async () => {
+  const openAdd  = () => { setEditItem(null); setForm({ name: "", type: "Equipment", imageEmoji: "⚔️", highestBid: 0, bidder: "-", hoursLeft: 48 }); setShowModal(true); };
+  const openEdit = (a) => { setEditItem(a); setForm({ ...a, hoursLeft: Math.max(0, Math.round((a.endsAt - Date.now()) / 3600000)) }); setShowModal(true); };
+  const handleSave = () => {
     if (!form.name) return;
-    const item = {
-      name: form.name,
-      type: form.type,
-      image_emoji: EMOJIS[form.type] || form.image_emoji,
-      highest_bid: +form.highest_bid || 0,
-      bidder: form.bidder || "-",
-      ends_at: Date.now() + +form.hoursLeft * 3600000,
-    };
-    if (editItem) {
-      await supabase.from("auctions").update(item).eq("id", editItem.id);
-    } else {
-      await supabase.from("auctions").insert([item]);
-    }
+    const item = { ...form, highestBid: +form.highestBid, imageEmoji: EMOJIS[form.type] || form.imageEmoji };
+    if (editItem) setAuctions(auctions.map(a => a.id === editItem.id ? { ...item, id: a.id, endsAt: Date.now() + +form.hoursLeft * 3600000 } : a));
+    else setAuctions([...auctions, { ...item, id: Date.now(), endsAt: Date.now() + +form.hoursLeft * 3600000 }]);
     setShowModal(false);
-    loadAuctions();
   };
-
-  const handleDelete = async (id) => {
-    await supabase.from("auctions").delete().eq("id", id);
-    loadAuctions();
-  };
-
-  const openBid = (item) => {
-    setBidModal(item);
-    setBidForm({ amount: (item.highest_bid || 0) + 10, bidder: currentUser.display });
-  };
-
-  const confirmBid = async () => {
-    const amt = +bidForm.amount;
-    if (amt <= (bidModal.highest_bid || 0)) return;
-    let newEndsAt = bidModal.ends_at;
-    // Anti-snipe: extend timer if bid placed near end
-    if (newEndsAt - Date.now() < SNIPE_WINDOW) {
-      newEndsAt = Date.now() + SNIPE_EXTEND;
-    }
-    await supabase.from("auctions").update({
-      highest_bid: amt,
-      bidder: bidForm.bidder || "Anonymous",
-      ends_at: newEndsAt,
-    }).eq("id", bidModal.id);
-    setBidModal(null);
-    loadAuctions();
-  };
-
-  // Manual time edit (admin/leader)
-  const openTimeEdit = (item) => {
-    const remaining = Math.max(0, item.ends_at - Date.now());
-    setTimeEditModal(item);
-    setTimeEditForm({
-      hours: Math.floor(remaining / 3600000),
-      minutes: Math.floor((remaining % 3600000) / 60000),
-    });
-  };
-
-  const confirmTimeEdit = async () => {
-    const ms = (+timeEditForm.hours * 3600000) + (+timeEditForm.minutes * 60000);
-    await supabase.from("auctions").update({ ends_at: Date.now() + ms }).eq("id", timeEditModal.id);
-    setTimeEditModal(null);
-    loadAuctions();
-  };
-
+  const handleDelete = (id) => setAuctions(auctions.filter(a => a.id !== id));
+  const openBid = (item) => { setBidModal(item); setBidForm({ amount: item.highestBid + 10, bidder: currentUser.display }); };
+  const confirmBid = () => { setAuctions(auctions.map(a => a.id === bidModal.id ? { ...a, highestBid: +bidForm.amount, bidder: bidForm.bidder || "Anonymous" } : a)); setBidModal(null); };
   const getTimeColor = (endsAt) => { const diff = endsAt - now; if (diff < 3600000) return "#f87171"; if (diff < 86400000) return "#fbbf24"; return "#9ca3af"; };
-
-  if (loading) return <div style={{ color: "#6b7280", textAlign: "center", padding: "60px" }}>Loading auctions...</div>;
 
   return (
     <div>
@@ -657,25 +576,19 @@ function AuctionTab({ role, currentUser }) {
         </div>
         {can(role, "addAuction") && <button onClick={openAdd} style={btnStyle("#1e3a8a", "#a5b4fc")}>+ Add Item</button>}
       </div>
-      {auctions.length === 0 && <div style={{ color: "#6b7280", textAlign: "center", padding: "40px" }}>No auction items yet.</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "14px" }}>
         {filtered.map(item => {
-          const ended = item.ends_at < now;
+          const ended = item.endsAt < now;
           return (
             <div key={item.id} style={{ background: "#1a1f2e", border: "1px solid #2d3748", borderRadius: "12px", overflow: "hidden", opacity: ended ? 0.6 : 1 }}>
               <div style={{ background: "#0f1320", padding: "24px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "56px", position: "relative" }}>
-                {item.image_emoji}
+                {item.imageEmoji}
                 <span style={{ position: "absolute", bottom: "8px", left: "50%", transform: "translateX(-50%)", background: ended ? "#374151" : "#92400e", color: ended ? "#9ca3af" : "#fcd34d", fontSize: "11px", padding: "2px 10px", borderRadius: "20px", whiteSpace: "nowrap" }}>{ended ? "ENDED" : "ONGOING BIDS"}</span>
               </div>
               <div style={{ padding: "12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-                  <div style={{ color: getTimeColor(item.ends_at), fontSize: "11px", flex: 1 }}>⏱ {ended ? "Ended" : formatCountdown(item.ends_at)}</div>
-                  {!ended && can(role, "editAuction") && (
-                    <button onClick={() => openTimeEdit(item)} title="Edit Timer" style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: "13px", padding: "0 2px" }}>🕐</button>
-                  )}
-                </div>
+                <div style={{ color: getTimeColor(item.endsAt), fontSize: "11px", marginBottom: "4px" }}>⏱ {ended ? "Ended" : formatCountdown(item.endsAt)}</div>
                 <div style={{ color: "#f3f4f6", fontWeight: "700", fontSize: "15px", marginBottom: "8px" }}>{item.name}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}><span style={{ color: "#6b7280", fontSize: "12px" }}>Highest Bid</span><span style={{ color: item.highest_bid > 0 ? "#fbbf24" : "#f3f4f6", fontWeight: "700" }}>{item.highest_bid} PTS</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}><span style={{ color: "#6b7280", fontSize: "12px" }}>Highest Bid</span><span style={{ color: item.highestBid > 0 ? "#fbbf24" : "#f3f4f6", fontWeight: "700" }}>{item.highestBid} PTS</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}><span style={{ color: "#6b7280", fontSize: "12px" }}>Bidder</span><span style={{ color: "#9ca3af", fontSize: "13px" }}>{item.bidder}</span></div>
                 <div style={{ display: "flex", gap: "6px" }}>
                   {!ended && can(role, "placeBid") && <button onClick={() => openBid(item)} style={{ flex: 1, background: "#92400e", border: "1px solid #fcd34d", color: "#fcd34d", padding: "6px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>Place Bid</button>}
@@ -687,8 +600,6 @@ function AuctionTab({ role, currentUser }) {
           );
         })}
       </div>
-
-      {/* Add/Edit Item Modal */}
       {showModal && (
         <Modal onClose={() => setShowModal(false)}>
           <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>{editItem ? "Edit Item" : "Add Auction Item"}</h2>
@@ -696,7 +607,7 @@ function AuctionTab({ role, currentUser }) {
             <label style={{ ...labelStyle, gridColumn: "1 / -1" }}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Item Name</span><input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} /></label>
             <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Type</span><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={inputStyle}>{["Equipment", "Material", "Consumable", "Currency"].map(t => <option key={t}>{t}</option>)}</select></label>
             <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Hours Left</span><input type="number" value={form.hoursLeft} onChange={e => setForm({ ...form, hoursLeft: e.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Starting Bid (PTS)</span><input type="number" value={form.highest_bid} onChange={e => setForm({ ...form, highest_bid: e.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Starting Bid (PTS)</span><input type="number" value={form.highestBid} onChange={e => setForm({ ...form, highestBid: e.target.value })} style={inputStyle} /></label>
             <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Current Bidder</span><input type="text" value={form.bidder} onChange={e => setForm({ ...form, bidder: e.target.value })} style={inputStyle} /></label>
           </div>
           <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
@@ -705,353 +616,16 @@ function AuctionTab({ role, currentUser }) {
           </div>
         </Modal>
       )}
-
-      {/* Manual Time Edit Modal */}
-      {timeEditModal && (
-        <Modal onClose={() => setTimeEditModal(null)}>
-          <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>🕐 Edit Timer — {timeEditModal.name}</h2>
-          <p style={{ color: "#9ca3af", fontSize: "13px" }}>Set how much time remains for this auction. Current: <strong style={{ color: "#fbbf24" }}>{formatCountdown(timeEditModal.ends_at)}</strong></p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Hours</span><input type="number" min="0" value={timeEditForm.hours} onChange={e => setTimeEditForm({ ...timeEditForm, hours: e.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Minutes</span><input type="number" min="0" max="59" value={timeEditForm.minutes} onChange={e => setTimeEditForm({ ...timeEditForm, minutes: e.target.value })} style={inputStyle} /></label>
-          </div>
-          <p style={{ color: "#60a5fa", fontSize: "12px", marginTop: "8px" }}>⚡ Anti-snipe: if someone bids in the last 5 minutes, the timer auto-extends by 5 minutes.</p>
-          <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
-            <button onClick={() => setTimeEditModal(null)} style={btnStyle("#374151", "#9ca3af")}>Cancel</button>
-            <button onClick={confirmTimeEdit} style={btnStyle("#1e3a8a", "#a5b4fc")}>Update Timer</button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Place Bid Modal */}
       {bidModal && (
         <Modal onClose={() => setBidModal(null)}>
           <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>🏆 Place Bid — {bidModal.name}</h2>
-          <p style={{ color: "#9ca3af", fontSize: "13px" }}>Current highest: <strong style={{ color: "#fbbf24" }}>{bidModal.highest_bid} PTS</strong> by {bidModal.bidder}</p>
-          <p style={{ color: "#60a5fa", fontSize: "12px", marginTop: "-8px" }}>⏱ Time left: {formatCountdown(bidModal.ends_at)}</p>
-          {bidModal.ends_at - Date.now() < SNIPE_WINDOW && (
-            <div style={{ background: "#78350f22", border: "1px solid #fcd34d44", borderRadius: "6px", padding: "8px 12px", marginBottom: "10px", color: "#fcd34d", fontSize: "12px" }}>
-              ⚡ Bidding now will extend the timer by 5 minutes (anti-snipe protection)!
-            </div>
-          )}
+          <p style={{ color: "#9ca3af", fontSize: "13px" }}>Current highest: <strong style={{ color: "#fbbf24" }}>{bidModal.highestBid} PTS</strong> by {bidModal.bidder}</p>
           <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Your Bid (PTS)</span><input type="number" value={bidForm.amount} onChange={e => setBidForm({ ...bidForm, amount: e.target.value })} style={inputStyle} /></label>
           <label style={{ ...labelStyle, marginTop: "10px" }}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Your Character Name</span><input type="text" value={bidForm.bidder} onChange={e => setBidForm({ ...bidForm, bidder: e.target.value })} style={inputStyle} /></label>
-          {+bidForm.amount <= (bidModal.highest_bid || 0) && <p style={{ color: "#f87171", fontSize: "12px" }}>⚠️ Bid must be higher than current bid!</p>}
+          {+bidForm.amount <= bidModal.highestBid && <p style={{ color: "#f87171", fontSize: "12px" }}>⚠️ Bid must be higher than current bid!</p>}
           <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
             <button onClick={() => setBidModal(null)} style={btnStyle("#374151", "#9ca3af")}>Cancel</button>
-            <button onClick={confirmBid} disabled={+bidForm.amount <= (bidModal.highest_bid || 0)} style={btnStyle("#92400e", "#fcd34d")}>Confirm Bid</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// AUCTION WINNERS TAB — Shows ended auctions with winners
-// ============================================================
-// Uses the same "auctions" table, just filters ended ones.
-// Optionally uses "auction_winners" table for archived history.
-function AuctionWinnersTab({ role }) {
-  const [winners, setWinners] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [archiveModal, setArchiveModal] = useState(null);
-
-  const loadWinners = async () => {
-    // Load ended auctions from main table
-    const { data } = await supabase
-      .from("auctions")
-      .select("*")
-      .lt("ends_at", Date.now())
-      .order("ends_at", { ascending: false });
-    if (data) setWinners(data);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadWinners();
-    const ch = supabase
-      .channel("winners-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "auctions" }, loadWinners)
-      .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, []);
-
-  const handleArchiveAndDelete = async (item) => {
-    // Optionally save to auction_winners table first
-    await supabase.from("auction_winners").insert([{
-      name: item.name,
-      type: item.type,
-      image_emoji: item.image_emoji,
-      highest_bid: item.highest_bid,
-      bidder: item.bidder,
-      ended_at: item.ends_at,
-    }]).catch(() => {}); // ignore if table doesn't exist
-    await supabase.from("auctions").delete().eq("id", item.id);
-    loadWinners();
-    setArchiveModal(null);
-  };
-
-  if (loading) return <div style={{ color: "#6b7280", textAlign: "center", padding: "60px" }}>Loading winners...</div>;
-
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "8px" }}>
-        <div>
-          <h2 style={{ color: "#f3f4f6", margin: 0, fontSize: "18px" }}>🏅 Auction Winners</h2>
-          <p style={{ color: "#6b7280", fontSize: "13px", margin: "4px 0 0" }}>All ended auctions and their winning bidders</p>
-        </div>
-        <button onClick={loadWinners} style={btnStyle("#1f2937", "#9ca3af")}>🔄 Refresh</button>
-      </div>
-      {winners.length === 0 && (
-        <div style={{ textAlign: "center", padding: "60px", color: "#6b7280" }}>
-          <div style={{ fontSize: "48px", marginBottom: "12px" }}>🏆</div>
-          <div>No ended auctions yet. Winners will appear here when auctions expire.</div>
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {winners.map((item, i) => (
-          <div key={item.id} style={{ background: "#1a1f2e", border: "1px solid #2d3748", borderRadius: "10px", padding: "14px 18px", display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-            <div style={{ fontSize: "36px", minWidth: "44px", textAlign: "center" }}>{item.image_emoji}</div>
-            <div style={{ flex: 1, minWidth: "140px" }}>
-              <div style={{ color: "#f3f4f6", fontWeight: "700", fontSize: "15px" }}>{item.name}</div>
-              <div style={{ color: "#6b7280", fontSize: "12px", marginTop: "2px" }}>{item.type} · Ended {new Date(item.ends_at).toLocaleString()}</div>
-            </div>
-            <div style={{ textAlign: "center", minWidth: "80px" }}>
-              <div style={{ color: "#9ca3af", fontSize: "11px", marginBottom: "2px" }}>WINNER</div>
-              <div style={{ color: "#fbbf24", fontWeight: "700", fontSize: "14px" }}>{item.bidder === "-" || !item.bidder ? "No Bids" : item.bidder}</div>
-            </div>
-            <div style={{ textAlign: "center", minWidth: "80px" }}>
-              <div style={{ color: "#9ca3af", fontSize: "11px", marginBottom: "2px" }}>FINAL BID</div>
-              <div style={{ color: item.highest_bid > 0 ? "#34d399" : "#6b7280", fontWeight: "700", fontSize: "14px" }}>{item.highest_bid > 0 ? `${item.highest_bid} PTS` : "—"}</div>
-            </div>
-            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-              <span style={{ background: item.highest_bid > 0 ? "#065f4633" : "#37415133", color: item.highest_bid > 0 ? "#34d399" : "#9ca3af", border: `1px solid ${item.highest_bid > 0 ? "#34d39944" : "#37415144"}`, padding: "3px 10px", borderRadius: "20px", fontSize: "11px" }}>
-                {item.highest_bid > 0 ? "✓ Sold" : "No Bids"}
-              </span>
-              {can(role, "editAuction") && (
-                <button onClick={() => setArchiveModal(item)} style={{ background: "#7f1d1d22", border: "1px solid #f8717133", color: "#f87171", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>Archive & Remove</button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-      {archiveModal && (
-        <Modal onClose={() => setArchiveModal(null)}>
-          <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>📦 Archive Item</h2>
-          <p style={{ color: "#9ca3af", fontSize: "14px" }}>Remove <strong style={{ color: "#f3f4f6" }}>{archiveModal.name}</strong> from the auction board?</p>
-          <p style={{ color: "#6b7280", fontSize: "13px" }}>Winner: <span style={{ color: "#fbbf24" }}>{archiveModal.bidder}</span> with <span style={{ color: "#34d399" }}>{archiveModal.highest_bid} PTS</span></p>
-          <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
-            <button onClick={() => setArchiveModal(null)} style={btnStyle("#374151", "#9ca3af")}>Cancel</button>
-            <button onClick={() => handleArchiveAndDelete(archiveModal)} style={btnStyle("#7f1d1d", "#fca5a5")}>Archive & Remove</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// ATTENDANCE TAB
-// ============================================================
-// Requires Supabase table: attendance
-//   id (int8 primary key), member_name (text), date (date), present (bool), note (text)
-function AttendanceTab({ members, role }) {
-  const [records, setRecords] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(todayStr());
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState({});
-  const [noteModal, setNoteModal] = useState(null);
-  const [noteText, setNoteText] = useState("");
-  const [viewMode, setViewMode] = useState("daily"); // "daily" | "summary"
-  const [summaryData, setSummaryData] = useState([]);
-
-  const loadAttendance = async (date) => {
-    setLoading(true);
-    const { data } = await supabase.from("attendance").select("*").eq("date", date);
-    if (data) setRecords(data);
-    setLoading(false);
-  };
-
-  const loadSummary = async () => {
-    const { data } = await supabase.from("attendance").select("*").order("date", { ascending: false });
-    if (data) setSummaryData(data);
-  };
-
-  useEffect(() => {
-    if (viewMode === "daily") loadAttendance(selectedDate);
-    else loadSummary();
-  }, [selectedDate, viewMode]);
-
-  const getRecord = (memberName) => records.find(r => r.member_name === memberName);
-
-  const toggleAttendance = async (memberName) => {
-    if (!can(role, "markAttendance")) return;
-    const existing = getRecord(memberName);
-    setSaving(s => ({ ...s, [memberName]: true }));
-    if (existing) {
-      await supabase.from("attendance").update({ present: !existing.present }).eq("id", existing.id);
-    } else {
-      await supabase.from("attendance").insert([{ member_name: memberName, date: selectedDate, present: true, note: "" }]);
-    }
-    await loadAttendance(selectedDate);
-    setSaving(s => ({ ...s, [memberName]: false }));
-  };
-
-  const openNote = (memberName) => {
-    const r = getRecord(memberName);
-    setNoteText(r?.note || "");
-    setNoteModal(memberName);
-  };
-
-  const saveNote = async () => {
-    const existing = getRecord(noteModal);
-    if (existing) {
-      await supabase.from("attendance").update({ note: noteText }).eq("id", existing.id);
-    } else {
-      await supabase.from("attendance").insert([{ member_name: noteModal, date: selectedDate, present: false, note: noteText }]);
-    }
-    await loadAttendance(selectedDate);
-    setNoteModal(null);
-  };
-
-  // Summary: count present days per member
-  const getSummaryForMember = (memberName) => {
-    const memberRecords = summaryData.filter(r => r.member_name === memberName);
-    const totalDays = [...new Set(summaryData.map(r => r.date))].length;
-    const presentDays = memberRecords.filter(r => r.present).length;
-    return { presentDays, totalDays };
-  };
-
-  const presentCount = records.filter(r => r.present).length;
-
-  return (
-    <div>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
-        <div>
-          <h2 style={{ color: "#f3f4f6", margin: 0, fontSize: "18px" }}>📋 Attendance</h2>
-          <p style={{ color: "#6b7280", fontSize: "13px", margin: "4px 0 0" }}>Track guild member attendance by date</p>
-        </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => setViewMode("daily")} style={{ padding: "7px 16px", borderRadius: "8px", border: "none", cursor: "pointer", background: viewMode === "daily" ? "#3b82f6" : "#1f2937", color: viewMode === "daily" ? "#fff" : "#9ca3af", fontWeight: "600", fontSize: "13px" }}>Daily View</button>
-          <button onClick={() => setViewMode("summary")} style={{ padding: "7px 16px", borderRadius: "8px", border: "none", cursor: "pointer", background: viewMode === "summary" ? "#3b82f6" : "#1f2937", color: viewMode === "summary" ? "#fff" : "#9ca3af", fontWeight: "600", fontSize: "13px" }}>Summary</button>
-        </div>
-      </div>
-
-      {viewMode === "daily" && (
-        <>
-          {/* Date picker + stats */}
-          <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
-            <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={{ ...inputStyle, width: "auto", minWidth: "160px" }} />
-            <div style={{ display: "flex", gap: "8px" }}>
-              <span style={{ background: "#065f4633", color: "#34d399", border: "1px solid #34d39944", padding: "4px 14px", borderRadius: "20px", fontSize: "13px", fontWeight: "600" }}>✓ {presentCount} Present</span>
-              <span style={{ background: "#37415133", color: "#9ca3af", border: "1px solid #37415144", padding: "4px 14px", borderRadius: "20px", fontSize: "13px", fontWeight: "600" }}>✗ {members.length - presentCount} Absent</span>
-            </div>
-          </div>
-
-          {loading ? (
-            <div style={{ color: "#6b7280", textAlign: "center", padding: "40px" }}>Loading...</div>
-          ) : (
-            <div style={{ background: "#0f1320", border: "1px solid #1f2937", borderRadius: "10px", overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #2d3748" }}>
-                    {["#", "Character Name", "Class", "Position", "Status", "Note", ...(can(role, "markAttendance") ? ["Action"] : [])].map(h => (
-                      <th key={h} style={{ padding: "12px 14px", color: "#9ca3af", fontWeight: "500", textAlign: "left", whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((m, i) => {
-                    const rec = getRecord(m.name);
-                    const present = rec?.present || false;
-                    const pc = positionColors[m.position] || positionColors.Member;
-                    return (
-                      <tr key={m.id} style={{ borderBottom: "1px solid #1f2937", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
-                        <td style={{ padding: "10px 14px", color: "#6b7280" }}>{i + 1}</td>
-                        <td style={{ padding: "10px 14px", color: "#f3f4f6", fontWeight: "600" }}>{m.name}</td>
-                        <td style={{ padding: "10px 14px", color: "#9ca3af" }}>{m.class}</td>
-                        <td style={{ padding: "10px 14px" }}><span style={{ background: pc.bg, color: pc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
-                        <td style={{ padding: "10px 14px" }}>
-                          <span style={{ background: present ? "#065f46" : "#1f2937", color: present ? "#34d399" : "#9ca3af", border: `1px solid ${present ? "#34d39944" : "#37415144"}`, padding: "3px 12px", borderRadius: "20px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: present ? "#34d399" : "#6b7280" }}></span>
-                            {present ? "Present" : "Absent"}
-                          </span>
-                        </td>
-                        <td style={{ padding: "10px 14px", color: "#6b7280", fontSize: "12px", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rec?.note || "—"}</td>
-                        {can(role, "markAttendance") && (
-                          <td style={{ padding: "10px 14px" }}>
-                            <div style={{ display: "flex", gap: "6px" }}>
-                              <button onClick={() => toggleAttendance(m.name)} disabled={saving[m.name]} style={{ background: present ? "#7f1d1d22" : "#065f4622", border: `1px solid ${present ? "#f8717133" : "#34d39933"}`, color: present ? "#f87171" : "#34d399", padding: "4px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
-                                {saving[m.name] ? "..." : present ? "Mark Absent" : "Mark Present"}
-                              </button>
-                              <button onClick={() => openNote(m.name)} style={{ background: "#1f2937", border: "none", color: "#9ca3af", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>📝</button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-
-      {viewMode === "summary" && (
-        <>
-          <div style={{ marginBottom: "16px", color: "#9ca3af", fontSize: "13px" }}>Showing attendance across all recorded dates.</div>
-          <div style={{ background: "#0f1320", border: "1px solid #1f2937", borderRadius: "10px", overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #2d3748" }}>
-                  {["#", "Character Name", "Class", "Position", "Days Present", "Total Days", "Rate"].map(h => (
-                    <th key={h} style={{ padding: "12px 14px", color: "#9ca3af", fontWeight: "500", textAlign: "left" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((m, i) => {
-                  const { presentDays, totalDays } = getSummaryForMember(m.name);
-                  const rate = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
-                  const pc = positionColors[m.position] || positionColors.Member;
-                  return (
-                    <tr key={m.id} style={{ borderBottom: "1px solid #1f2937", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
-                      <td style={{ padding: "10px 14px", color: "#6b7280" }}>{i + 1}</td>
-                      <td style={{ padding: "10px 14px", color: "#f3f4f6", fontWeight: "600" }}>{m.name}</td>
-                      <td style={{ padding: "10px 14px", color: "#9ca3af" }}>{m.class}</td>
-                      <td style={{ padding: "10px 14px" }}><span style={{ background: pc.bg, color: pc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
-                      <td style={{ padding: "10px 14px", color: "#34d399", fontWeight: "700" }}>{presentDays}</td>
-                      <td style={{ padding: "10px 14px", color: "#9ca3af" }}>{totalDays}</td>
-                      <td style={{ padding: "10px 14px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <div style={{ flex: 1, height: "6px", background: "#374151", borderRadius: "3px", minWidth: "60px" }}>
-                            <div style={{ width: `${rate}%`, height: "100%", background: rate >= 80 ? "#34d399" : rate >= 50 ? "#fbbf24" : "#f87171", borderRadius: "3px", transition: "width 0.3s" }}></div>
-                          </div>
-                          <span style={{ color: rate >= 80 ? "#34d399" : rate >= 50 ? "#fbbf24" : "#f87171", fontWeight: "700", fontSize: "13px", minWidth: "36px" }}>{rate}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {noteModal && (
-        <Modal onClose={() => setNoteModal(null)}>
-          <h2 style={{ color: "#f3f4f6", marginTop: 0 }}>📝 Note for {noteModal}</h2>
-          <label style={labelStyle}>
-            <span style={{ color: "#9ca3af", fontSize: "12px" }}>Note (e.g. reason for absence)</span>
-            <textarea value={noteText} onChange={e => setNoteText(e.target.value)} rows={4} style={{ ...inputStyle, resize: "vertical" }} />
-          </label>
-          <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
-            <button onClick={() => setNoteModal(null)} style={btnStyle("#374151", "#9ca3af")}>Cancel</button>
-            <button onClick={saveNote} style={btnStyle("#1e3a8a", "#a5b4fc")}>Save Note</button>
+            <button onClick={confirmBid} disabled={+bidForm.amount <= bidModal.highestBid} style={btnStyle("#92400e", "#fcd34d")}>Confirm Bid</button>
           </div>
         </Modal>
       )}
@@ -1063,54 +637,32 @@ function AttendanceTab({ members, role }) {
 // MAIN APP
 // ============================================================
 export default function GuildTracker() {
-  const [currentUser, setCurrentUser] = useState(() => {
-    try { const saved = localStorage.getItem("guild_user"); return saved ? JSON.parse(saved) : null; }
-    catch { return null; }
-  });
+  const [currentUser, setCurrentUser] = useState(() => { try { const saved = localStorage.getItem("guild_user"); return saved ? JSON.parse(saved) : null; } catch { return null; } });
   const [tab, setTab] = useState("members");
-  const [members, setMembers] = useState([]);
-  const [bosses, setBosses]   = useState(BOSSES_DEFAULT);
+  const [members, setMembers]   = useState(MEMBERS_DEFAULT);
+  const [bosses, setBosses]     = useState(BOSSES_DEFAULT);
+  const [auctions, setAuctions] = useState(AUCTIONS_DEFAULT);
 
   if (!currentUser) return <LoginPage onLogin={(user) => { setCurrentUser(user); localStorage.setItem("guild_user", JSON.stringify(user)); }} />;
 
-const role = currentUser?.role || "member";
-const rc = roleColors[role] || roleColors["member"];
+  const role = currentUser.role;
+  const rc = roleColors[role];
 
   const tabs = [
-    { id: "members",    label: "👥 Members",        count: members && members.length ? members.length : 0 },
-    { id: "attendance", label: "📅 Attendance",     count: null },
-    { id: "bosses",     label: "🌋 Boss Timer",     count: null },
-    { id: "auction",    label: "🏆 Auction House",  count: null },
-    { id: "winners",    label: "🥇 Winners",        count: null }
+    { id: "members", label: "👥 Members",      count: members.length },
+    { id: "bosses",  label: "👹 Boss Timer",    count: null },
+    { id: "auction", label: "🏆 Auction House", count: auctions.filter(a => a.endsAt > Date.now()).length },
+    ...(can(role, "manageUsers") ? [{ id: "users", label: "🔐 Manage Users", count: null }] : []),
   ];
 
-  if (can(role, "manageUsers")) {
-    tabs.push({ id: "users", label: "💼 Manage Users", count: null });
-  }
-
-   useEffect(() => {
-    const loadLiveGuildMembers = async () => {
-      const { data, error } = await supabase
-        .from("users") 
-        .select("*");
-
-      if (!error && data) {
-        setMembers(data); 
-      }
-    };
-
-    if (currentUser) {
-      loadLiveGuildMembers();
-    }
-  }, [currentUser]);
   return (
     <div style={{ minHeight: "100vh", background: "#0d1117", fontFamily: "'Segoe UI', system-ui, sans-serif", color: "#f3f4f6" }}>
       <div style={{ background: "#0f1320", borderBottom: "1px solid #1f2937", padding: "0 24px" }}>
         <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0 0", flexWrap: "wrap", gap: "8px" }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", display: "flex", alignItems: "center", gap: "8px" }}><img src="https://mbalsusqtkbtoxuawjau.supabase.co/storage/v1/object/public/asset/RAMPAGE%20FOR%20APP.png" alt="Rampage" style={{ width: "22px", height: "22px", borderRadius: "50%", objectFit: "cover" }} /> RAMPAGE TRACKER</h1>
-              <p style={{ margin: "2px 0 0", color: "#6b7280", fontSize: "13px" }}>Attendance · Unique Boss  · Bidding</p>
+              <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>⚔️ RAMPAGE TRACKER</h1>
+              <p style={{ margin: "2px 0 0", color: "#6b7280", fontSize: "13px" }}>Attendance · Boss Timers · Auction House</p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{ textAlign: "right" }}>
@@ -1130,12 +682,10 @@ const rc = roleColors[role] || roleColors["member"];
         </div>
       </div>
       <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "24px" }}>
-        {tab === "members"    && <MembersTab members={members} setMembers={setMembers} role={role} />}
-        {tab === "attendance" && <AttendanceTab members={members} role={role} />}
-        {tab === "bosses"     && <BossTimerTab bosses={bosses} setBosses={setBosses} role={role} />}
-        {tab === "auction"    && <AuctionTab role={role} currentUser={currentUser} />}
-        {tab === "winners"    && <AuctionWinnersTab role={role} />}
-        {tab === "users"      && can(role, "manageUsers") && <UsersTab currentUser={currentUser} />}
+        {tab === "members" && <MembersTab members={members} setMembers={setMembers} role={role} />}
+        {tab === "bosses"  && <BossTimerTab bosses={bosses} setBosses={setBosses} role={role} />}
+        {tab === "auction" && <AuctionTab auctions={auctions} setAuctions={setAuctions} role={role} currentUser={currentUser} />}
+        {tab === "users"   && can(role, "manageUsers") && <UsersTab currentUser={currentUser} />}
       </div>
     </div>
   );
