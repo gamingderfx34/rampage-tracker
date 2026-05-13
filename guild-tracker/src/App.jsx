@@ -10,7 +10,7 @@ const CAN = {
   killBoss:      ["admin", "leader", "elder"],
   editBoss:      ["admin", "leader", "elder", "member"],
   addAuction:    ["admin", "leader"],
-  editAuction:   ["admin", "leader"],
+  editAuction:   ["admin", "leader", "elder"],
   placeBid:      ["admin", "leader", "elder", "member"],
   manageUsers:   ["admin"],
 };
@@ -695,21 +695,35 @@ function AuctionTab({ role, currentUser }) {
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
 
+  const [saveError, setSaveError] = useState("");
+
+  // Detect column names from the first row returned by Supabase
+  // so we send the right format (camelCase vs snake_case)
+  const colFormat = useRef(null); // "camel" | "snake" | null
+
   // Load auctions from Supabase `events` table
   const loadAuctions = async () => {
-    const { data, error } = await supabase.from("events").select("*").order("created_at", { ascending: true });
-    if (!error && data) {
-      setAuctions(data.map(row => ({
-        id:          row.id,
-        name:        row.name,
-        type:        row.type || "Equipment",
-        imageEmoji:  row.imageEmoji || row.image_emoji || "⚔️",
-        highestBid:  row.highestBid  ?? row.highest_bid ?? 0,
-        bidder:      row.bidder ?? "-",
-        endsAt:      row.endsAt    ?? row.ends_at
-                       ? new Date(row.endsAt ?? row.ends_at).getTime()
-                       : Date.now() + 3600000 * 48,
-      })));
+    const { data, error } = await supabase.from("auction_items").select("*").order("created_at", { ascending: true });
+    if (error) { console.error("Load auctions error:", error); setLoading(false); return; }
+    if (data && data.length > 0) {
+      // Auto-detect column format from first row
+      const first = data[0];
+      if ("highestBid" in first) colFormat.current = "camel";
+      else if ("highest_bid" in first) colFormat.current = "snake";
+    }
+    if (data) {
+      setAuctions(data.map(row => {
+        const rawEndsAt = row.endsAt ?? row.ends_at ?? null;
+        return {
+          id:         row.id,
+          name:       row.name,
+          type:       row.type || "Equipment",
+          imageEmoji: row.imageEmoji || row.image_emoji || "⚔️",
+          highestBid: row.highestBid ?? row.highest_bid ?? 0,
+          bidder:     row.bidder ?? "-",
+          endsAt:     rawEndsAt ? new Date(rawEndsAt).getTime() : Date.now() + 3600000 * 48,
+        };
+      }));
     }
     setLoading(false);
   };
@@ -718,57 +732,101 @@ function AuctionTab({ role, currentUser }) {
     loadAuctions();
     const ch = supabase
       .channel("auctions-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "events" }, loadAuctions)
+      .on("postgres_changes", { event: "*", schema: "public", table: "auction_items" }, loadAuctions)
       .on("postgres_changes", { event: "*", schema: "public", table: "auction_winners" }, loadAuctions)
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, []);
 
+  // Build a payload that matches whatever column format Supabase uses
+  const buildPayload = (fields) => {
+    const fmt = colFormat.current;
+    // fields: { name, type, emoji, highestBid, bidder, endsAt (ISO string) }
+    if (fmt === "camel") {
+      return {
+        name:        fields.name,
+        type:        fields.type,
+        imageEmoji:  fields.emoji,
+        highestBid:  fields.highestBid,
+        bidder:      fields.bidder,
+        endsAt:      fields.endsAt,
+      };
+    }
+    // snake_case (default / unknown)
+    return {
+      name:        fields.name,
+      type:        fields.type,
+      image_emoji: fields.emoji,
+      highest_bid: fields.highestBid,
+      bidder:      fields.bidder,
+      ends_at:     fields.endsAt,
+    };
+  };
+
   const EMOJIS = { Equipment: "⚔️", Material: "💎", Consumable: "🧪", Currency: "💰" };
   const types   = ["All", "Equipment", "Material", "Consumable", "Currency"];
   const filtered = auctions.filter(a => filter === "All" || a.type === filter);
 
-  const openAdd  = () => { setEditItem(null); setForm({ name: "", type: "Equipment", imageEmoji: "⚔️", highestBid: 0, bidder: "-", hoursLeft: 48 }); setShowModal(true); };
-  const openEdit = (a) => { setEditItem(a); setForm({ ...a, hoursLeft: Math.max(0, Math.round((a.endsAt - Date.now()) / 3600000)) }); setShowModal(true); };
+  const openAdd  = () => { setSaveError(""); setEditItem(null); setForm({ name: "", type: "Equipment", imageEmoji: "⚔️", highestBid: 0, bidder: "-", hoursLeft: 48 }); setShowModal(true); };
+  const openEdit = (a) => { setSaveError(""); setEditItem(a); setForm({ ...a, hoursLeft: Math.max(0, Math.round((a.endsAt - Date.now()) / 3600000)) }); setShowModal(true); };
 
   const handleSave = async () => {
     if (!form.name) return;
-    const endsAt = new Date(Date.now() + +form.hoursLeft * 3600000).toISOString();
-    const payload = {
-      name:        form.name,
-      type:        form.type,
-      image_emoji: EMOJIS[form.type] || form.imageEmoji,
-      highest_bid: +form.highestBid,
-      bidder:      form.bidder || "-",
-      ends_at:     endsAt,
-    };
+    setSaveError("");
+    const endsAt  = new Date(Date.now() + +form.hoursLeft * 3600000).toISOString();
+    const payload = buildPayload({
+      name:       form.name,
+      type:       form.type,
+      emoji:      EMOJIS[form.type] || form.imageEmoji,
+      highestBid: +form.highestBid,
+      bidder:     form.bidder || "-",
+      endsAt,
+    });
+
+    let result;
     if (editItem) {
-      await supabase.from("events").update(payload).eq("id", editItem.id);
+      result = await supabase.from("auction_items").update(payload).eq("id", editItem.id).select();
     } else {
-      await supabase.from("events").insert([payload]);
+      result = await supabase.from("auction_items").insert([payload]).select();
+    }
+
+    if (result.error) {
+      console.error("Save error:", result.error);
+      setSaveError(`❌ Save failed: ${result.error.message}`);
+      return;
     }
     setShowModal(false);
+    loadAuctions(); // force refresh
   };
 
   const handleDelete = async (id) => {
     if (window.confirm("Delete this auction item?")) {
-      await supabase.from("events").delete().eq("id", id);
+      const { error } = await supabase.from("auction_items").delete().eq("id", id);
+      if (error) alert("Delete failed: " + error.message);
     }
   };
 
-  const openBid   = (item) => { setBidModal(item); setBidForm({ amount: item.highestBid + 10, bidder: currentUser.display }); };
+  const openBid = (item) => { setBidModal(item); setBidForm({ amount: item.highestBid + 10, bidder: currentUser.display }); };
 
   const confirmBid = async () => {
     if (+bidForm.amount <= bidModal.highestBid) return;
-    // Update the events table
-    await supabase.from("events").update({ highest_bid: +bidForm.amount, bidder: bidForm.bidder || "Anonymous" }).eq("id", bidModal.id);
-    // Also record in auction_winners for history
-    await supabase.from("auction_winners").insert([{
+
+    // Build bid update using detected column format
+    const bidPayload = colFormat.current === "camel"
+      ? { highestBid: +bidForm.amount, bidder: bidForm.bidder || "Anonymous" }
+      : { highest_bid: +bidForm.amount, bidder: bidForm.bidder || "Anonymous" };
+
+    const { error } = await supabase.from("auction_items").update(bidPayload).eq("id", bidModal.id);
+    if (error) { alert("Bid failed: " + error.message); return; }
+
+    // Log to auction_winners (best-effort)
+    supabase.from("auction_winners").insert([{
       item_id:   bidModal.id,
       item_name: bidModal.name,
       bidder:    bidForm.bidder || "Anonymous",
       amount:    +bidForm.amount,
-    }]).then(() => {});  // non-blocking, ignore if table schema differs
+    }]).then(() => {});
+
     setBidModal(null);
   };
 
@@ -826,6 +884,7 @@ function AuctionTab({ role, currentUser }) {
             <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Starting Bid (PTS)</span><input type="number" value={form.highestBid} onChange={e => setForm({ ...form, highestBid: e.target.value })} style={inputStyle} /></label>
             <label style={labelStyle}><span style={{ color: "#9ca3af", fontSize: "12px" }}>Current Bidder</span><input type="text" value={form.bidder} onChange={e => setForm({ ...form, bidder: e.target.value })} style={inputStyle} /></label>
           </div>
+          {saveError && <div style={{ color: "#f87171", fontSize: "12px", marginTop: "8px" }}>{saveError}</div>}
           <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowModal(false)} style={btnStyle("#374151", "#9ca3af")}>Cancel</button>
             <button onClick={handleSave} style={btnStyle("#1e3a8a", "#a5b4fc")}>Save</button>
@@ -894,9 +953,12 @@ export default function GuildTracker() {
       <div style={{ background: "#0f1320", borderBottom: "1px solid #1f2937", padding: "0 24px" }}>
         <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0 0", flexWrap: "wrap", gap: "8px" }}>
-            <div>
-              <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>⚔️ RAMPAGE TRACKER</h1>
-              <p style={{ margin: "2px 0 0", color: "#6b7280", fontSize: "13px" }}>Attendance · Boss Timers · Auction House</p>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <img src="https://mbalsusqtkbtoxuawjau.supabase.co/storage/v1/object/public/asset/RAMPAGE%20FOR%20APP.png" alt="Rampage" style={{ width: "72px", height: "72px", objectFit: "contain" }} />
+              <div>
+                <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", background: "linear-gradient(90deg, #60a5fa, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>RAMPAGE TRACKER</h1>
+                <p style={{ margin: "2px 0 0", color: "#6b7280", fontSize: "13px" }}>Attendance · Boss Timers · Auction House</p>
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{ textAlign: "right" }}>
