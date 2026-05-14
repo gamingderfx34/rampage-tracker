@@ -545,34 +545,17 @@ function MembersTab({ role }) {
   const [sortDir, setSortDir]     = useState("desc");
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
-  const [saveError, setSaveError] = useState("");
-
-  const normalizeMember = (m) => ({
-    ...m,
-    // Support both snake_case (Supabase default) and camelCase column names
-    growthPower: m.growthPower ?? m.growth_power ?? 0,
-    multiplier:  m.multiplier  ?? 1,
-    class_image_url: m.class_image_url ?? null,
-  });
 
   const loadMembers = async () => {
-    // Try snake_case order first, then camelCase — handles both Supabase column naming styles
-    let { data: membersData, error } = await supabase.from("members").select("*").order("growth_power", { ascending: false });
-    if (error) {
-      // Maybe the column is camelCase — try that
-      ({ data: membersData, error } = await supabase.from("members").select("*").order("id", { ascending: true }));
-    }
-    if (!error && membersData && membersData.length > 0) {
+    const { data: membersData, error } = await supabase.from("members").select("*").order("growthPower", { ascending: false });
+    if (!error && membersData) {
+      // Sort: Leader first, then Elder, Member, Rookie — never show raw admin entries
       const sorted = membersData
         .filter(m => m.position !== "admin")
-        .map(normalizeMember)
         .sort((a, b) => (POSITION_ORDER[a.position] ?? 99) - (POSITION_ORDER[b.position] ?? 99));
       setMembers(sorted);
-    } else if (!error && membersData && membersData.length === 0) {
-      // Table exists but empty — that's fine, show empty state
-      setMembers([]);
     } else {
-      // Fallback: pull from users table
+      // Fallback: pull from users table, skip admin role entirely, map pending → Rookie
       const { data: usersData } = await supabase
         .from("users")
         .select("id, display, role, points")
@@ -585,7 +568,6 @@ function MembersTab({ role }) {
           position: roleToPosition[u.role] || "Member",
           growthPower: 0, multiplier: 1,
           points: u.points || 0, activity: u.role === "pending" ? "Inactive" : "Active", comment: "",
-          _fromUsersTable: true,
         }));
         mapped.sort((a, b) => (POSITION_ORDER[a.position] ?? 99) - (POSITION_ORDER[b.position] ?? 99));
         setMembers(mapped);
@@ -602,79 +584,26 @@ function MembersTab({ role }) {
   }, []);
 
   const resetPoints = async (member) => {
-    if (member._fromUsersTable) {
-      await supabase.from("users").update({ points: 0 }).eq("display", member.name);
-    } else {
-      await supabase.from("users").update({ points: 0 }).eq("display", member.name);
-      await supabase.from("members").update({ points: 0 }).eq("id", member.id);
-    }
+    await supabase.from("users").update({ points: 0 }).eq("display", member.name);
+    await supabase.from("members").update({ points: 0 }).eq("id", member.id);
     loadMembers();
   };
-
-  const addPoints = async (member, amount) => {
-    const current = member.points || 0;
-    const newPoints = Math.max(0, current + amount);
-    await supabase.from("users").update({ points: newPoints }).eq("display", member.name);
-    if (!member._fromUsersTable) {
-      await supabase.from("members").update({ points: newPoints }).eq("id", member.id);
-    }
-    loadMembers();
-  };
-  const openAdd  = () => { setSaveError(""); setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "", class_image_url: "" }); setShowModal(true); };
-  const openEdit = (m) => { setSaveError(""); setEditMember(m); setForm({ name: m.name, class: m.class || "Archer", position: m.position, growthPower: m.growthPower ?? 0, multiplier: m.multiplier ?? 1, activity: m.activity, comment: m.comment || "", class_image_url: m.class_image_url || "" }); setShowModal(true); };
-
-  // Detect column format from existing members data
-  const getColFormat = () => {
-    if (members.length > 0) {
-      const raw = members[0];
-      if ("growth_power" in raw) return "snake";
-      if ("growthPower" in raw) return "camel";
-    }
-    return "snake"; // default: assume snake_case (Supabase standard)
-  };
-
-  const buildMemberPayload = (f) => {
-    const fmt = getColFormat();
-    if (fmt === "snake") {
-      return {
-        name: f.name,
-        class: f.class,
-        position: f.position,
-        growth_power: +f.growthPower || 0,
-        multiplier: +f.multiplier || 1,
-        activity: f.activity,
-        comment: f.comment,
-        class_image_url: f.class_image_url || null,
-      };
-    }
-    return {
-      name: f.name,
-      class: f.class,
-      position: f.position,
-      growthPower: +f.growthPower || 0,
-      multiplier: +f.multiplier || 1,
-      activity: f.activity,
-      comment: f.comment,
-      class_image_url: f.class_image_url || null,
-    };
-  };
+const addPoints = async (member, amount) => {
+  const current = member.points || 0;
+  const newPoints = Math.max(0, current + amount);
+  await supabase.from("users").update({ points: newPoints }).eq("display", member.name);
+  await supabase.from("members").update({ points: newPoints }).eq("id", member.id);
+  loadMembers();
+};
+  const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" }); setShowModal(true); };
+  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: m.class, position: m.position, growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity, comment: m.comment || "" }); setShowModal(true); };
 
   const handleSave = async () => {
     if (!form.name) return;
-    setSaveError("");
-    const payload = buildMemberPayload(form);
-    let res;
-    if (editMember) {
-      res = await supabase.from("members").update(payload).eq("id", editMember.id).select();
-    } else {
-      res = await supabase.from("members").insert([{ ...payload, points: 0 }]).select();
-    }
-    if (res.error) {
-      setSaveError("Save failed: " + res.error.message);
-      return;
-    }
+    const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment };
+    if (editMember) await supabase.from("members").update(payload).eq("id", editMember.id);
+    else await supabase.from("members").insert([{ ...payload, points: 0 }]);
     setShowModal(false);
-    loadMembers();
   };
 
   const handleDelete = async (id) => {
@@ -696,24 +625,12 @@ function MembersTab({ role }) {
 
   const handleImport = async () => {
     const lines = importText.trim().split("\n").filter(Boolean);
-    const fmt = getColFormat();
     const rows = lines.map(line => {
       const c = line.split(/\t|,/);
-      const base = {
-        name: c[0]?.trim() || "Unknown",
-        class: c[1]?.trim() || "Archer",
-        position: c[2]?.trim() || "Member",
-        multiplier: parseFloat(c[4]) || 1,
-        points: parseFloat(c[5]) || 0,
-        activity: c[6]?.trim() || "Active",
-        comment: c[7]?.trim() || "",
-      };
-      if (fmt === "snake") return { ...base, growth_power: parseFloat(c[3]) || 0 };
-      return { ...base, growthPower: parseFloat(c[3]) || 0 };
+      return { name: c[0]?.trim() || "Unknown", class: c[1]?.trim() || "Archer", position: c[2]?.trim() || "Member", growthPower: parseFloat(c[3]) || 0, multiplier: parseFloat(c[4]) || 1, points: parseFloat(c[5]) || 0, activity: c[6]?.trim() || "Active", comment: c[7]?.trim() || "" };
     });
     await supabase.from("members").insert(rows);
     setImportText(""); setShowImport(false);
-    loadMembers();
   };
 
   const exportCSV = () => {
@@ -793,16 +710,9 @@ function MembersTab({ role }) {
             ))}
             <label style={{ ...labelStyle, gridColumn: "1 / -1" }}><span style={{ color: T.textSub, fontSize: "12px" }}>Comment</span><input type="text" value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} style={inputStyle} /></label>
           </div>
-          <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end", flexDirection: "column" }}>
-            {saveError && (
-              <div style={{ background: "#3a121222", border: `1px solid ${T.red}55`, borderRadius: "8px", color: T.redHi, fontSize: "12px", padding: "8px 12px" }}>
-                ⚠️ {saveError}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button onClick={() => { setShowModal(false); setSaveError(""); }} style={btn("gray")}>Cancel</button>
-              <button onClick={handleSave} style={btn("gold")}>Save</button>
-            </div>
+          <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
+            <button onClick={() => setShowModal(false)} style={btn("gray")}>Cancel</button>
+            <button onClick={handleSave} style={btn("gold")}>Save</button>
           </div>
         </Modal>
       )}
@@ -1064,26 +974,15 @@ function BossTimerTab({ role }) {
 // ============================================================
 // ATTENDANCE TAB — real-time, member check-in + admin mark
 // ============================================================
-function generateCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I to avoid confusion
-  let code = "";
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
-}
-
 function AttendanceTab({ role, currentUser }) {
-  const [sessions, setSessions]           = useState([]);
-  const [records, setRecords]             = useState([]);
-  const [members, setMembers]             = useState([]);
-  const [loading, setLoading]             = useState(true);
+  const [sessions, setSessions]     = useState([]);
+  const [records, setRecords]       = useState([]);
+  const [members, setMembers]       = useState([]);
+  const [loading, setLoading]       = useState(true);
   const [activeSession, setActiveSession] = useState(null);
   const [showNewSession, setShowNewSession] = useState(false);
   const [newSessionName, setNewSessionName] = useState("");
   const [selectedSession, setSelectedSession] = useState(null);
-  const [codeInput, setCodeInput]         = useState("");
-  const [codeError, setCodeError]         = useState("");
-  const [codeSuccess, setCodeSuccess]     = useState(false);
-  const [copied, setCopied]               = useState(false);
 
   const loadAll = async () => {
     const [{ data: sData }, { data: rData }, { data: mData }] = await Promise.all([
@@ -1113,29 +1012,27 @@ function AttendanceTab({ role, currentUser }) {
 
   const createSession = async () => {
     if (!newSessionName.trim()) return;
+    // Close any active session first
     if (activeSession) {
       await supabase.from("attendance_sessions").update({ is_active: false, ended_at: new Date().toISOString() }).eq("id", activeSession.id);
     }
-    const code = generateCode();
     const { data } = await supabase.from("attendance_sessions").insert([{
       name: newSessionName.trim(),
       is_active: true,
       created_by: currentUser.display,
-      session_code: code,
     }]).select().single();
     setNewSessionName("");
     setShowNewSession(false);
     if (data) setSelectedSession(data.id);
   };
 
-  const deleteSession = async (sessionId) => {
-    if (!window.confirm("Delete this session permanently?")) return;
-    await supabase.from("attendance_records").delete().eq("session_id", sessionId);
-    await supabase.from("attendance_sessions").delete().eq("id", sessionId);
-    setSessions(prev => prev.filter(s => s.id !== sessionId));
-    if (selectedSession === sessionId) setSelectedSession(null);
-  };
-
+const deleteSession = async (sessionId) => {
+  if (!window.confirm("Delete this session permanently?")) return;
+  await supabase.from("attendance_records").delete().eq("session_id", sessionId);
+  await supabase.from("attendance_sessions").delete().eq("id", sessionId);
+  setSessions(prev => prev.filter(s => s.id !== sessionId));
+  if (selectedSession === sessionId) setSelectedSession(null);
+};
   const closeSession = async (sessionId) => {
     if (!window.confirm("Close this attendance session?")) return;
     await supabase.from("attendance_sessions").update({ is_active: false, ended_at: new Date().toISOString() }).eq("id", sessionId);
@@ -1144,6 +1041,7 @@ function AttendanceTab({ role, currentUser }) {
   const checkIn = async (memberName, sessionId, markedBy) => {
     const sid = sessionId || activeSession?.id;
     if (!sid) return alert("No active session to check in to.");
+    // Prevent duplicate
     const existing = records.find(r => r.session_id === sid && r.member_name === memberName);
     if (existing) return;
     await supabase.from("attendance_records").insert([{
@@ -1158,158 +1056,88 @@ function AttendanceTab({ role, currentUser }) {
     await supabase.from("attendance_records").delete().eq("id", recordId);
   };
 
-  // Code-based self check-in
-  const submitCode = async () => {
-    setCodeError("");
-    if (!codeInput.trim()) { setCodeError("Please enter the session code."); return; }
-    if (!activeSession) { setCodeError("No active session right now."); return; }
-    const entered = codeInput.trim().toUpperCase();
-    const correct = activeSession.session_code?.toUpperCase();
-    if (entered !== correct) {
-      setCodeError("❌ Wrong code. Ask your leader for the correct code.");
-      setCodeInput("");
-      return;
-    }
-    const existing = records.find(r => r.session_id === activeSession.id && r.member_name === currentUser.display);
-    if (existing) { setCodeError("You're already checked in!"); return; }
-    await supabase.from("attendance_records").insert([{
-      session_id: activeSession.id,
-      member_name: currentUser.display,
-      checked_in_at: new Date().toISOString(),
-      marked_by: currentUser.display,
-    }]);
-    setCodeSuccess(true);
-    setCodeInput("");
+  const selfCheckIn = async () => {
+    await checkIn(currentUser.display, activeSession?.id, currentUser.display);
   };
 
-  const copyCode = () => {
-    if (activeSession?.session_code) {
-      navigator.clipboard.writeText(activeSession.session_code).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    }
-  };
-
-  const sessionRecords    = records.filter(r => r.session_id === selectedSession);
+  // Get records for the selected session
+  const sessionRecords = records.filter(r => r.session_id === selectedSession);
   const sessionMemberNames = new Set(sessionRecords.map(r => r.member_name));
-  const presentCount      = sessionRecords.length;
-  const absentCount       = members.length - presentCount;
-  const selectedSess      = sessions.find(s => s.id === selectedSession);
-  const totalSessions     = sessions.filter(s => !s.is_active).length;
-  const myCheckIns        = records.filter(r => r.member_name === currentUser.display).length;
+  const presentCount  = sessionRecords.length;
+  const absentCount   = members.length - presentCount;
+  const selectedSess  = sessions.find(s => s.id === selectedSession);
+
+  // Stats
+  const totalSessions = sessions.filter(s => !s.is_active).length;
+  const myCheckIns    = records.filter(r => r.member_name === currentUser.display).length;
+
   const isAlreadyCheckedIn = activeSession && records.some(r => r.session_id === activeSession.id && r.member_name === currentUser.display);
-  const isLeader          = can(role, "markAttendance");
 
   if (loading) return <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>Loading attendance…</div>;
 
   return (
     <div>
-      <SectionHeader icon="📋" title="Attendance" sub="Session code check-in system" actions={[
-        isLeader && <button key="new" onClick={() => setShowNewSession(true)} style={btn("gold")}>+ New Session</button>,
-        activeSession && isLeader && <button key="close" onClick={() => closeSession(activeSession.id)} style={btn("red")}>🔒 Close Session</button>,
+      <SectionHeader icon="📋" title="Attendance" sub="Real-time check-ins per session" actions={[
+        can(role, "markAttendance") && <button key="new" onClick={() => setShowNewSession(true)} style={btn("gold")}>+ New Session</button>,
+        activeSession && can(role, "markAttendance") && <button key="close" onClick={() => closeSession(activeSession.id)} style={btn("red")}>🔒 Close Session</button>,
       ].filter(Boolean)} />
 
-      {/* Stats */}
+      {/* Quick stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "10px", marginBottom: "24px" }}>
         <StatBadge label="Total Sessions" value={sessions.length} color={T.blueHi} />
         <StatBadge label="Completed" value={totalSessions} color={T.textSub} />
         <StatBadge label="My Check-ins" value={myCheckIns} color={T.greenHi} />
         {selectedSess && <StatBadge label="Present" value={presentCount} color={T.greenHi} />}
-        {selectedSess && <StatBadge label="Absent" value={Math.max(0, absentCount)} color={T.redHi} />}
+        {selectedSess && <StatBadge label="Absent" value={absentCount < 0 ? 0 : absentCount} color={T.redHi} />}
       </div>
 
-      {/* Active session block */}
+      {/* Active session banner + self check-in */}
       {activeSession ? (
-        <div style={{ marginBottom: "20px" }}>
-
-          {/* LEADER view — show the code prominently */}
-          {isLeader && (
-            <div style={{ background: "#0d2e1e", border: `1px solid ${T.green}55`, borderRadius: "12px", padding: "16px 20px", marginBottom: "12px" }}>
-              <div style={{ color: T.greenHi, fontWeight: "700", fontSize: "14px", marginBottom: "4px" }}>🟢 Active: {activeSession.name}</div>
-              <div style={{ color: T.textSub, fontSize: "12px", marginBottom: "14px" }}>Started by {activeSession.created_by} · {formatDate(activeSession.created_at)}</div>
-              <div style={{ color: T.textSub, fontSize: "12px", fontWeight: "600", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>📢 Share this code with members:</div>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                <div style={{ background: T.bg0, border: `2px solid ${T.gold}88`, borderRadius: "10px", padding: "10px 24px", letterSpacing: "0.3em", fontSize: "28px", fontWeight: "900", color: T.goldHi, fontFamily: "monospace" }}>
-                  {activeSession.session_code || "——"}
-                </div>
-                <button onClick={copyCode} style={{ ...btn(copied ? "green" : "gold"), fontSize: "13px", padding: "8px 18px" }}>
-                  {copied ? "✅ Copied!" : "📋 Copy Code"}
-                </button>
-              </div>
-              <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "10px" }}>Share this in Discord or in-game chat. Only members who see it can check in.</div>
-            </div>
-          )}
-
-          {/* MEMBER view — code input box */}
-          {!isAlreadyCheckedIn && !codeSuccess ? (
-            <div style={{ background: T.bg2, border: `1px solid ${T.borderHi}`, borderRadius: "12px", padding: "16px 20px" }}>
-              <div style={{ color: T.text, fontWeight: "700", fontSize: "14px", marginBottom: "4px" }}>🟢 Session Active: {activeSession.name}</div>
-              <div style={{ color: T.textMuted, fontSize: "12px", marginBottom: "14px" }}>Enter the code shared by your leader to mark yourself present.</div>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  value={codeInput}
-                  onChange={e => { setCodeInput(e.target.value.toUpperCase()); setCodeError(""); }}
-                  onKeyDown={e => e.key === "Enter" && submitCode()}
-                  maxLength={6}
-                  placeholder="Enter code e.g. WOLF47"
-                  style={{ ...inputStyle, width: "180px", letterSpacing: "0.2em", fontSize: "18px", fontWeight: "700", fontFamily: "monospace", textTransform: "uppercase" }}
-                />
-                <button onClick={submitCode} style={{ ...btn("green"), fontSize: "14px", padding: "9px 22px" }}>✅ Check In</button>
-              </div>
-              {codeError && <div style={{ color: T.redHi, fontSize: "13px", marginTop: "8px" }}>{codeError}</div>}
-            </div>
+        <div style={{ background: T.greenGlow, border: `1px solid ${T.green}55`, borderRadius: "12px", padding: "14px 18px", marginBottom: "20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <div style={{ color: T.greenHi, fontWeight: "700", fontSize: "14px" }}>🟢 Active Session: {activeSession.name}</div>
+            <div style={{ color: T.textSub, fontSize: "12px", marginTop: "2px" }}>Started by {activeSession.created_by} · {formatDate(activeSession.created_at)}</div>
+          </div>
+          {!isAlreadyCheckedIn ? (
+            <button onClick={selfCheckIn} style={{ ...btn("green"), fontSize: "14px", padding: "10px 22px" }}>✅ Check In Now</button>
           ) : (
-            <div style={{ background: T.greenGlow, border: `1px solid ${T.green}55`, borderRadius: "12px", padding: "14px 20px", display: "flex", alignItems: "center", gap: "12px" }}>
-              <span style={{ fontSize: "24px" }}>✅</span>
-              <div>
-                <div style={{ color: T.greenHi, fontWeight: "700", fontSize: "14px" }}>You're checked in for: {activeSession.name}</div>
-                <div style={{ color: T.textSub, fontSize: "12px", marginTop: "2px" }}>Your attendance has been recorded.</div>
-              </div>
-            </div>
+            <span style={{ background: T.greenGlow, border: `1px solid ${T.green}55`, color: T.greenHi, padding: "8px 18px", borderRadius: "8px", fontSize: "13px", fontWeight: "600" }}>✓ Checked In</span>
           )}
         </div>
       ) : (
         <div style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "14px 18px", marginBottom: "20px", color: T.textMuted, fontSize: "14px" }}>
-          ⚪ No active session. {isLeader ? 'Click "+ New Session" to start one.' : "Wait for your leader to open a session."}
+          ⚪ No active session. {can(role, "markAttendance") ? 'Click "+ New Session" to start one.' : "Wait for admin to open a session."}
         </div>
       )}
 
       {/* Session selector */}
       {sessions.length > 0 && (
         <div style={{ marginBottom: "16px" }}>
-          <div style={{ color: T.textSub, fontSize: "12px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" }}>View Session Records</div>
+          <div style={{ color: T.textSub, fontSize: "12px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" }}>View Session</div>
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {sessions.map(s => (
               <button key={s.id} onClick={() => setSelectedSession(s.id)} style={{ padding: "6px 14px", borderRadius: "8px", border: `1px solid ${selectedSession === s.id ? T.blue : T.border}`, cursor: "pointer", background: selectedSession === s.id ? "#1a2f5c" : T.bg3, color: selectedSession === s.id ? T.blueHi : T.textSub, fontSize: "12px", fontWeight: selectedSession === s.id ? "700" : "400", display: "flex", alignItems: "center", gap: "6px" }}>
-                {s.is_active && <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: T.greenHi, display: "inline-block" }}></span>}
-                {s.name}
-                {isLeader && (
-                  <span onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} style={{ color: T.redHi, marginLeft: "4px", cursor: "pointer", fontSize: "10px" }}>✕</span>
-                )}
+                {s.is_active && <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: T.greenHi }}></span>}
+{s.name}
+{can(role, "markAttendance") && (
+  <span onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} style={{ color: "#f87171", marginLeft: "6px", cursor: "pointer", fontSize: "10px" }}>✕</span>
+)}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Attendance table */}
+      {/* Attendance table for selected session */}
       {selectedSess && (
         <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "6px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
             <div style={{ color: T.text, fontWeight: "600" }}>{selectedSess.name}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              {selectedSess.session_code && isLeader && (
-                <span style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: "6px", padding: "3px 10px", color: T.gold, fontFamily: "monospace", fontSize: "13px", fontWeight: "700", letterSpacing: "0.15em" }}>
-                  Code: {selectedSess.session_code}
-                </span>
-              )}
-              <div style={{ color: T.textMuted, fontSize: "12px" }}>{formatDate(selectedSess.created_at)}{!selectedSess.is_active && selectedSess.ended_at ? ` — ${formatDate(selectedSess.ended_at)}` : ""}</div>
-            </div>
+            <div style={{ color: T.textMuted, fontSize: "12px" }}>{formatDate(selectedSess.created_at)}{!selectedSess.is_active && selectedSess.ended_at ? ` — ${formatDate(selectedSess.ended_at)}` : ""}</div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "10px" }}>
-            {/* Present */}
+            {/* Present members */}
             <div style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: "12px", overflow: "hidden" }}>
               <div style={{ background: T.greenGlow, borderBottom: `1px solid ${T.green}44`, padding: "10px 14px", color: T.greenHi, fontWeight: "700", fontSize: "13px" }}>✅ Present ({presentCount})</div>
               <div style={{ padding: "8px" }}>
@@ -1323,7 +1151,7 @@ function AttendanceTab({ role, currentUser }) {
                         {r.marked_by && r.marked_by !== r.member_name && ` · by ${r.marked_by}`}
                       </div>
                     </div>
-                    {isLeader && (
+                    {can(role, "markAttendance") && (
                       <button onClick={() => removeRecord(r.id)} style={{ background: "none", border: "none", color: T.redHi, cursor: "pointer", fontSize: "16px", padding: "4px 6px" }} title="Remove">✕</button>
                     )}
                   </div>
@@ -1331,7 +1159,7 @@ function AttendanceTab({ role, currentUser }) {
               </div>
             </div>
 
-            {/* Absent */}
+            {/* Absent / not checked in */}
             <div style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: "12px", overflow: "hidden" }}>
               <div style={{ background: "#3a121222", borderBottom: `1px solid ${T.red}33`, padding: "10px 14px", color: T.redHi, fontWeight: "700", fontSize: "13px" }}>❌ Absent ({Math.max(0, members.length - presentCount)})</div>
               <div style={{ padding: "8px" }}>
@@ -1341,7 +1169,7 @@ function AttendanceTab({ role, currentUser }) {
                 {members.filter(m => !sessionMemberNames.has(m.name)).map(m => (
                   <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 6px", borderBottom: `1px solid ${T.border}` }}>
                     <div style={{ color: T.textSub, fontSize: "13px" }}>{m.name}</div>
-                    {isLeader && activeSession && (
+                    {can(role, "markAttendance") && activeSession && (
                       <button onClick={() => checkIn(m.name, activeSession.id, currentUser.display)} style={{ ...btn("green"), fontSize: "11px", padding: "4px 10px" }}>Mark Present</button>
                     )}
                   </div>
@@ -1353,19 +1181,16 @@ function AttendanceTab({ role, currentUser }) {
       )}
 
       {sessions.length === 0 && (
-        <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>No sessions yet. {isLeader ? 'Click "+ New Session" to create one.' : ""}</div>
+        <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>No sessions yet. {can(role, "markAttendance") ? 'Click "+ New Session" to create one.' : ""}</div>
       )}
 
       {showNewSession && (
         <Modal onClose={() => setShowNewSession(false)}>
           <h2 style={{ color: T.text, marginTop: 0 }}>📋 New Attendance Session</h2>
           <label style={labelStyle}>
-            <span style={{ color: T.textSub, fontSize: "12px" }}>Session Name</span>
+            <span style={{ color: T.textSub, fontSize: "12px" }}>Session Name (e.g. "Guild War 2025-06-01", "Weekly Raid")</span>
             <input type="text" value={newSessionName} onChange={e => setNewSessionName(e.target.value)} onKeyDown={e => e.key === "Enter" && createSession()} style={inputStyle} autoFocus placeholder="e.g. Weekly Raid - May 14" />
           </label>
-          <div style={{ marginTop: "12px", background: T.blueGlow, border: `1px solid ${T.blue}44`, borderRadius: "8px", color: T.blueHi, fontSize: "12px", padding: "10px 14px" }}>
-            🔑 A random 6-character code will be generated automatically. Share it with members in Discord or in-game chat to let them check in.
-          </div>
           {activeSession && (
             <div style={{ marginTop: "10px", background: T.goldGlow, border: `1px solid ${T.gold}44`, borderRadius: "8px", color: T.gold, fontSize: "12px", padding: "10px 14px" }}>
               ⚠️ This will close the current active session: <strong>{activeSession.name}</strong>
