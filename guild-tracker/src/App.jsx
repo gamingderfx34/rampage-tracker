@@ -15,7 +15,7 @@ const CAN = {
   placeBid:       ["admin", "leader", "elder", "member"],
   manageUsers:    ["admin"],
   markAttendance: ["admin", "leader"],
-  manageWinners:  ["admin", "leader"],
+manageWinners: ["admin", "leader", "elder"],
 };
 const can = (role, action) => CAN[action]?.includes(role);
 
