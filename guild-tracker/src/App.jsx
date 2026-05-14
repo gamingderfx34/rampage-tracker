@@ -5,18 +5,18 @@ import { supabase } from "./supabase";
 // ROLE PERMISSIONS
 // ============================================================
 const CAN = {
-  editMembers:   ["admin", "leader", "elder"],
-  deleteMembers: ["admin", "leader"],
-  killBoss:      ["admin", "leader", "elder"],
-  editBoss:      ["admin", "leader", "elder"],
-  uploadImage:   ["admin", "leader", "elder"],
-  addAuction:    ["admin", "leader", "elder"],
-  editAuction:   ["admin", "leader", "elder"],
-  placeBid:      ["admin", "leader", "elder", "member"],
-  manageUsers:   ["admin"],
-  markAttendance: ["admin", "leader"],
-  manageWinners: ["admin", "leader", "elder"],
-  addPoints:     ["admin", "leader", "elder"],
+  editMembers:   ["admin", "creator", "leader", "elder"],
+  deleteMembers: ["admin", "creator", "leader"],
+  killBoss:      ["admin", "creator", "leader", "elder"],
+  editBoss:      ["admin", "creator", "leader", "elder"],
+  uploadImage:   ["admin", "creator", "leader", "elder"],
+  addAuction:    ["admin", "creator", "leader", "elder"],
+  editAuction:   ["admin", "creator", "leader", "elder"],
+  placeBid:      ["admin", "creator", "leader", "elder", "member"],
+  manageUsers:   ["admin", "creator"],
+  markAttendance: ["admin", "creator", "leader"],
+  manageWinners: ["admin", "creator", "leader", "elder"],
+  addPoints:     ["admin", "creator", "leader", "elder"],
 };
 const can = (role, action) => CAN[action]?.includes(role);
 
@@ -115,11 +115,12 @@ const activityColors = {
   Inactive: { bg: T.bg3,    text: T.textMuted, dot: T.textMuted },
 };
 const roleColors = {
-  admin:   { bg: "#3a0a0a", text: "#fca5a5", label: "🛠️ Creator"    },
-  leader:  { bg: "#3a2003", text: "#fcd34d", label: "👑️ Leader"  },
-  elder:   { bg: "#0d1f3a", text: "#60a5fa", label: "⚔️ Elder"    },
-  member:  { bg: T.bg3,    text: T.textSub,  label: "👤 Member"  },
-  pending: { bg: T.bg3,    text: T.textMuted, label: "⏳ Pending" },
+  admin:   { bg: "#3a0a0a", text: "#fca5a5", label: "🛠️ Admin"      },
+  creator: { bg: "#4a0a2a", text: "#f9a8d4", label: "👑 Creator"    },
+  leader:  { bg: "#3a2003", text: "#fcd34d", label: "👑️ Leader"    },
+  elder:   { bg: "#0d1f3a", text: "#60a5fa", label: "⚔️ Elder"      },
+  member:  { bg: T.bg3,    text: T.textSub,  label: "👤 Member"    },
+  pending: { bg: T.bg3,    text: T.textMuted, label: "⏳ Pending"  },
 };
 
 // Decorative divider line
@@ -425,7 +426,7 @@ function UsersTab({ currentUser }) {
             <label style={labelStyle}>
               <span style={{ color: T.textSub, fontSize: "12px" }}>Role</span>
               <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={inputStyle}>
-                {["admin", "leader", "elder", "member"].map(r => <option key={r} value={r}>{roleColors[r].label} — {r}</option>)}
+                {["admin", "creator", "leader", "elder", "member"].map(r => <option key={r} value={r}>{roleColors[r].label} — {r}</option>)}
               </select>
             </label>
           </div>
@@ -518,6 +519,7 @@ function MembersTab({ role }) {
         .from("users")
         .select("id, display, role, points")
         .neq("role", "admin")
+        .neq("role", "creator")
         .order("created_at", { ascending: true });
       if (usersData) {
         const roleToPosition = { leader: "Leader", elder: "Elder", member: "Member", pending: "Rookie" };
@@ -558,10 +560,22 @@ const addPoints = async (member, amount) => {
 
   const handleSave = async () => {
     if (!form.name) return;
-    const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment };
-    if (editMember) await supabase.from("members").update(payload).eq("id", editMember.id);
-    else await supabase.from("members").insert([{ ...payload, points: 0 }]);
+    const payload = {
+      name: form.name,
+      class: form.class,
+      position: form.position,
+      growthPower: +form.growthPower || 0,
+      multiplier: +form.multiplier || 1,
+      activity: form.activity,
+      comment: form.comment,
+    };
+    if (editMember) {
+      await supabase.from("members").update(payload).eq("id", editMember.id);
+    } else {
+      await supabase.from("members").insert([{ ...payload, points: 0 }]);
+    }
     setShowModal(false);
+    loadMembers();
   };
 
   const handleDelete = async (id) => {
@@ -634,8 +648,10 @@ const addPoints = async (member, amount) => {
                     {can(role, "addPoints") && (
                       <button onClick={() => resetPoints(m)} style={{ background: "none", border: "none", color: T.redHi, cursor: "pointer", fontSize: "11px", marginLeft: "6px" }} title="Reset points">↺</button>
                     )}
-					<button onClick={() => { const v = prompt("Add or remove points (e.g. 50 or -50):"); if (v !== null) addPoints(m, parseInt(v) || 0); }} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: "11px", marginLeft: "4px" }} title="Add/Remove points">✎</button>
-  </td>
+                    {can(role, "addPoints") && (
+                      <button onClick={() => { const v = prompt("Add or remove points (e.g. 50 or -50):"); if (v !== null) addPoints(m, parseInt(v) || 0); }} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: "11px", marginLeft: "4px" }} title="Add/Remove points">✎</button>
+                    )}
+                  </td>
                   <td style={{ padding: "10px 10px" }}><span style={{ background: ac.bg, color: ac.text, padding: "3px 10px", borderRadius: "20px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}><span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ac.dot }}></span>{m.activity}</span></td>
                   <td style={{ padding: "10px 10px", color: T.textSub, maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.comment || "—"}</td>
                   {can(role, "editMembers") && (
