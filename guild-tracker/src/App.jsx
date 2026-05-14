@@ -1212,7 +1212,7 @@ function AuctionTab({ role, currentUser }) {
   };
 
   // Upload image to Supabase storage and return public URL
-  const uploadImage = async (file, bucket = "auction-images") => {
+  const uploadImage = async (file, bucket = "auction-item") => {
     if (!file) return "";
     setUploadingImg(true);
     const ext = file.name.split(".").pop();
@@ -1227,7 +1227,7 @@ function AuctionTab({ role, currentUser }) {
   const handleAuctionImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = await uploadImage(file, "auction-images");
+    const url = await uploadImage(file, "auction-item");
     if (url) setForm(f => ({ ...f, imageUrl: url }));
   };
 
@@ -1320,7 +1320,7 @@ function AuctionTab({ role, currentUser }) {
                     </button>
                     {form.imageUrl
                       ? <button type="button" onClick={() => setForm(f => ({ ...f, imageUrl: "" }))} style={{ ...btn("red"), width: "100%", fontSize: "12px", padding: "6px" }}>✕ Remove Image (use emoji)</button>
-                      : <span style={{ color: T.textMuted, fontSize: "11px" }}>PNG / JPG / WebP — stored in Supabase "auction-images" bucket</span>
+                      : <span style={{ color: T.textMuted, fontSize: "11px" }}>PNG / JPG / WebP — stored in Supabase "auction-item" bucket</span>
                     }
                   </div>
                 </div>
