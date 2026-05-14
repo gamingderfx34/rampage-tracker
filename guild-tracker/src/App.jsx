@@ -208,11 +208,12 @@ const { data: whitelist } = await supabase.from("clan_whitelist").select("*").eq
 if (!whitelist) { setRegError("❌ Your Account ID is not on the clan whitelist. Contact your admin."); return; }const { data: existing } = await supabase.from("users").select("id").eq("username", regForm.username.toLowerCase().trim()).maybeSingle();
     if (existing) { setRegError("Username already taken."); return; }
     const { error: insertErr } = await supabase.from("users").insert([{
-      username: regForm.username.toLowerCase().trim(),
-      password: regForm.password,
-      display:  regForm.display.trim(),
-      role:     "pending",
-    }]);
+  username: regForm.username.toLowerCase().trim(),
+  password: regForm.password,
+  display: regForm.display.trim(),
+  role:     "member",
+  is_approved: true,
+}]);
     if (insertErr) setRegError("Registration failed. Try again.");
     else { setRegSuccess(true); setIsRegistering(false); }
   };
