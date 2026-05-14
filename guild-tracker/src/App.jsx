@@ -540,24 +540,39 @@ function MembersTab({ role }) {
   const [loading, setLoading]     = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editMember, setEditMember] = useState(null);
-  const [form, setForm]           = useState({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "", class_image_url: "" });
+  const [form, setForm]           = useState({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" });
   const [sortBy, setSortBy]       = useState("growthPower");
   const [sortDir, setSortDir]     = useState("desc");
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
-  const [uploadingClassImg, setUploadingClassImg] = useState(false);
-  const classImgRef = useRef(null);
+  const [saveError, setSaveError] = useState("");
+
+  const normalizeMember = (m) => ({
+    ...m,
+    // Support both snake_case (Supabase default) and camelCase column names
+    growthPower: m.growthPower ?? m.growth_power ?? 0,
+    multiplier:  m.multiplier  ?? 1,
+    class_image_url: m.class_image_url ?? null,
+  });
 
   const loadMembers = async () => {
-    const { data: membersData, error } = await supabase.from("members").select("*").order("growthPower", { ascending: false });
-    if (!error && membersData) {
-      // Sort: Leader first, then Elder, Member, Rookie — never show raw admin entries
+    // Try snake_case order first, then camelCase — handles both Supabase column naming styles
+    let { data: membersData, error } = await supabase.from("members").select("*").order("growth_power", { ascending: false });
+    if (error) {
+      // Maybe the column is camelCase — try that
+      ({ data: membersData, error } = await supabase.from("members").select("*").order("id", { ascending: true }));
+    }
+    if (!error && membersData && membersData.length > 0) {
       const sorted = membersData
         .filter(m => m.position !== "admin")
+        .map(normalizeMember)
         .sort((a, b) => (POSITION_ORDER[a.position] ?? 99) - (POSITION_ORDER[b.position] ?? 99));
       setMembers(sorted);
+    } else if (!error && membersData && membersData.length === 0) {
+      // Table exists but empty — that's fine, show empty state
+      setMembers([]);
     } else {
-      // Fallback: pull from users table, skip admin role entirely, map pending → Rookie
+      // Fallback: pull from users table
       const { data: usersData } = await supabase
         .from("users")
         .select("id, display, role, points")
@@ -570,6 +585,7 @@ function MembersTab({ role }) {
           position: roleToPosition[u.role] || "Member",
           growthPower: 0, multiplier: 1,
           points: u.points || 0, activity: u.role === "pending" ? "Inactive" : "Active", comment: "",
+          _fromUsersTable: true,
         }));
         mapped.sort((a, b) => (POSITION_ORDER[a.position] ?? 99) - (POSITION_ORDER[b.position] ?? 99));
         setMembers(mapped);
@@ -586,38 +602,79 @@ function MembersTab({ role }) {
   }, []);
 
   const resetPoints = async (member) => {
-    await supabase.from("users").update({ points: 0 }).eq("display", member.name);
-    await supabase.from("members").update({ points: 0 }).eq("id", member.id);
+    if (member._fromUsersTable) {
+      await supabase.from("users").update({ points: 0 }).eq("display", member.name);
+    } else {
+      await supabase.from("users").update({ points: 0 }).eq("display", member.name);
+      await supabase.from("members").update({ points: 0 }).eq("id", member.id);
+    }
     loadMembers();
   };
-const addPoints = async (member, amount) => {
-  const current = member.points || 0;
-  const newPoints = Math.max(0, current + amount);
-  await supabase.from("users").update({ points: newPoints }).eq("display", member.name);
-  await supabase.from("members").update({ points: newPoints }).eq("id", member.id);
-  loadMembers();
-};
-  const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "", class_image_url: "" }); setShowModal(true); };
-  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: m.class || "Archer", position: m.position, growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity, comment: m.comment || "", class_image_url: m.class_image_url || "" }); setShowModal(true); };
 
-  const uploadClassImage = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingClassImg(true);
-    const ext = file.name.split(".").pop();
-    const filename = `class_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("class-images").upload(filename, file, { upsert: true, contentType: file.type });
-    setUploadingClassImg(false);
-    if (upErr) { alert("Upload failed: " + upErr.message); return; }
-    const { data: urlData } = supabase.storage.from("class-images").getPublicUrl(filename);
-    if (urlData?.publicUrl) setForm(f => ({ ...f, class_image_url: urlData.publicUrl }));
+  const addPoints = async (member, amount) => {
+    const current = member.points || 0;
+    const newPoints = Math.max(0, current + amount);
+    await supabase.from("users").update({ points: newPoints }).eq("display", member.name);
+    if (!member._fromUsersTable) {
+      await supabase.from("members").update({ points: newPoints }).eq("id", member.id);
+    }
+    loadMembers();
   };
+  const openAdd  = () => { setSaveError(""); setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "", class_image_url: "" }); setShowModal(true); };
+  const openEdit = (m) => { setSaveError(""); setEditMember(m); setForm({ name: m.name, class: m.class || "Archer", position: m.position, growthPower: m.growthPower ?? 0, multiplier: m.multiplier ?? 1, activity: m.activity, comment: m.comment || "", class_image_url: m.class_image_url || "" }); setShowModal(true); };
+
+  // Detect column format from existing members data
+  const getColFormat = () => {
+    if (members.length > 0) {
+      const raw = members[0];
+      if ("growth_power" in raw) return "snake";
+      if ("growthPower" in raw) return "camel";
+    }
+    return "snake"; // default: assume snake_case (Supabase standard)
+  };
+
+  const buildMemberPayload = (f) => {
+    const fmt = getColFormat();
+    if (fmt === "snake") {
+      return {
+        name: f.name,
+        class: f.class,
+        position: f.position,
+        growth_power: +f.growthPower || 0,
+        multiplier: +f.multiplier || 1,
+        activity: f.activity,
+        comment: f.comment,
+        class_image_url: f.class_image_url || null,
+      };
+    }
+    return {
+      name: f.name,
+      class: f.class,
+      position: f.position,
+      growthPower: +f.growthPower || 0,
+      multiplier: +f.multiplier || 1,
+      activity: f.activity,
+      comment: f.comment,
+      class_image_url: f.class_image_url || null,
+    };
+  };
+
   const handleSave = async () => {
     if (!form.name) return;
-    const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment, class_image_url: form.class_image_url || null };
-    if (editMember) await supabase.from("members").update(payload).eq("id", editMember.id);
-    else await supabase.from("members").insert([{ ...payload, points: 0 }]);
+    setSaveError("");
+    const payload = buildMemberPayload(form);
+    let res;
+    if (editMember) {
+      res = await supabase.from("members").update(payload).eq("id", editMember.id).select();
+    } else {
+      res = await supabase.from("members").insert([{ ...payload, points: 0 }]).select();
+    }
+    if (res.error) {
+      setSaveError("Save failed: " + res.error.message);
+      return;
+    }
     setShowModal(false);
+    loadMembers();
   };
 
   const handleDelete = async (id) => {
@@ -639,12 +696,24 @@ const addPoints = async (member, amount) => {
 
   const handleImport = async () => {
     const lines = importText.trim().split("\n").filter(Boolean);
+    const fmt = getColFormat();
     const rows = lines.map(line => {
       const c = line.split(/\t|,/);
-      return { name: c[0]?.trim() || "Unknown", class: c[1]?.trim() || "Archer", position: c[2]?.trim() || "Member", growthPower: parseFloat(c[3]) || 0, multiplier: parseFloat(c[4]) || 1, points: parseFloat(c[5]) || 0, activity: c[6]?.trim() || "Active", comment: c[7]?.trim() || "" };
+      const base = {
+        name: c[0]?.trim() || "Unknown",
+        class: c[1]?.trim() || "Archer",
+        position: c[2]?.trim() || "Member",
+        multiplier: parseFloat(c[4]) || 1,
+        points: parseFloat(c[5]) || 0,
+        activity: c[6]?.trim() || "Active",
+        comment: c[7]?.trim() || "",
+      };
+      if (fmt === "snake") return { ...base, growth_power: parseFloat(c[3]) || 0 };
+      return { ...base, growthPower: parseFloat(c[3]) || 0 };
     });
     await supabase.from("members").insert(rows);
     setImportText(""); setShowImport(false);
+    loadMembers();
   };
 
   const exportCSV = () => {
@@ -681,15 +750,7 @@ const addPoints = async (member, amount) => {
                 <tr key={m.id} style={{ borderBottom: `1px solid ${T.border}`, background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)" }}>
                   <td style={{ padding: "10px 10px", color: T.textMuted }}>{i + 1}</td>
                   <td style={{ padding: "10px 10px", color: T.text, fontWeight: "600" }}>{m.name}</td>
-                  <td style={{ padding: "10px 10px", color: T.textSub }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-                      {m.class_image_url
-                        ? <img src={m.class_image_url} alt={m.class} style={{ width: "26px", height: "26px", borderRadius: "5px", objectFit: "cover", border: `1px solid ${T.border}` }} onError={e => { e.target.style.display = "none"; }} />
-                        : <span style={{ width: "26px", height: "26px", display: "inline-flex", alignItems: "center", justifyContent: "center", background: T.bg3, borderRadius: "5px", border: `1px solid ${T.border}`, fontSize: "13px" }}>⚔️</span>
-                      }
-                      <span>{m.class && m.class !== "—" ? m.class : <span style={{ color: T.textMuted, fontStyle: "italic" }}>No class</span>}</span>
-                    </div>
-                  </td>
+                  <td style={{ padding: "10px 10px", color: T.textSub }}>{m.class}</td>
                   <td style={{ padding: "10px 10px" }}><span style={{ background: pc.bg, color: pc.text, border: `1px solid ${pc.border}`, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
                   <td style={{ padding: "10px 10px", color: T.text }}>{(m.growthPower || 0).toLocaleString()}</td>
                   <td style={{ padding: "10px 10px", color: T.goldHi }}>x{(m.multiplier || 1).toFixed(2)}</td>
@@ -731,35 +792,17 @@ const addPoints = async (member, amount) => {
               <label key={key} style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>{label}</span><select value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} style={inputStyle}>{opts.map(o => <option key={o}>{o}</option>)}</select></label>
             ))}
             <label style={{ ...labelStyle, gridColumn: "1 / -1" }}><span style={{ color: T.textSub, fontSize: "12px" }}>Comment</span><input type="text" value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} style={inputStyle} /></label>
-
-            {/* Class Image Upload */}
-            <div style={{ gridColumn: "1 / -1" }}>
-              <div style={{ color: T.textSub, fontSize: "12px", marginBottom: "8px", fontWeight: "600" }}>Class Image</div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                {form.class_image_url
-                  ? <img src={form.class_image_url} alt="class" style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover", border: `1px solid ${T.border}` }} />
-                  : <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: T.bg3, border: `1px dashed ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>⚔️</div>
-                }
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
-                  <input ref={classImgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={uploadClassImage} />
-                  <button type="button" onClick={() => classImgRef.current?.click()} disabled={uploadingClassImg} style={{ ...btn("purple"), fontSize: "12px", padding: "7px 14px", opacity: uploadingClassImg ? 0.6 : 1 }}>
-                    {uploadingClassImg ? "⏳ Uploading…" : "🖼️ Upload Class Image"}
-                  </button>
-                  <input type="text" value={form.class_image_url} onChange={e => setForm({ ...form, class_image_url: e.target.value })} placeholder="Or paste image URL here" style={{ ...inputStyle, fontSize: "11px" }} />
-                  {form.class_image_url && (
-                    <button type="button" onClick={() => setForm(f => ({ ...f, class_image_url: "" }))} style={{ ...btn("red"), fontSize: "11px", padding: "4px 10px" }}>✕ Remove Image</button>
-                  )}
-                </div>
-              </div>
-              <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "6px" }}>
-                💡 Supabase SQL needed: <code style={{ color: T.blueHi, background: T.bg0, padding: "1px 5px", borderRadius: "3px" }}>ALTER TABLE members ADD COLUMN IF NOT EXISTS class_image_url text;</code>
-                {" "}and create a storage bucket named <code style={{ color: T.blueHi, background: T.bg0, padding: "1px 5px", borderRadius: "3px" }}>class-images</code> (public).
-              </div>
-            </div>
           </div>
-          <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
-            <button onClick={() => setShowModal(false)} style={btn("gray")}>Cancel</button>
-            <button onClick={handleSave} disabled={uploadingClassImg} style={{ ...btn("gold"), opacity: uploadingClassImg ? 0.6 : 1 }}>Save</button>
+          <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end", flexDirection: "column" }}>
+            {saveError && (
+              <div style={{ background: "#3a121222", border: `1px solid ${T.red}55`, borderRadius: "8px", color: T.redHi, fontSize: "12px", padding: "8px 12px" }}>
+                ⚠️ {saveError}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button onClick={() => { setShowModal(false); setSaveError(""); }} style={btn("gray")}>Cancel</button>
+              <button onClick={handleSave} style={btn("gold")}>Save</button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1195,34 +1238,11 @@ function AttendanceTab({ role, currentUser }) {
                 </button>
               </div>
               <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "10px" }}>Share this in Discord or in-game chat. Only members who see it can check in.</div>
-
-              {/* Leader self check-in */}
-              {!isAlreadyCheckedIn && !codeSuccess && (
-                <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: `1px solid ${T.green}33` }}>
-                  <div style={{ color: T.textSub, fontSize: "12px", marginBottom: "8px" }}>Also check yourself in:</div>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                    <input
-                      value={codeInput}
-                      onChange={e => { setCodeInput(e.target.value.toUpperCase()); setCodeError(""); }}
-                      onKeyDown={e => e.key === "Enter" && submitCode()}
-                      maxLength={6}
-                      placeholder={activeSession.session_code || "Enter code"}
-                      style={{ ...inputStyle, width: "160px", letterSpacing: "0.2em", fontSize: "16px", fontWeight: "700", fontFamily: "monospace", textTransform: "uppercase" }}
-                    />
-                    <button onClick={submitCode} style={{ ...btn("green"), fontSize: "13px", padding: "8px 18px" }}>✅ Check In</button>
-                    <button onClick={async () => { await checkIn(currentUser.display, activeSession.id, currentUser.display); setCodeSuccess(true); }} style={{ ...btn("blue"), fontSize: "13px", padding: "8px 18px" }}>Mark Me Present</button>
-                  </div>
-                  {codeError && <div style={{ color: T.redHi, fontSize: "13px", marginTop: "8px" }}>{codeError}</div>}
-                </div>
-              )}
-              {(isAlreadyCheckedIn || codeSuccess) && (
-                <div style={{ marginTop: "10px", color: T.greenHi, fontSize: "13px", fontWeight: "600" }}>✅ You are checked in for this session.</div>
-              )}
             </div>
           )}
 
-          {/* MEMBER view — code input box (only for non-leaders; leaders have their own check-in above) */}
-          {!isLeader && (!isAlreadyCheckedIn && !codeSuccess ? (
+          {/* MEMBER view — code input box */}
+          {!isAlreadyCheckedIn && !codeSuccess ? (
             <div style={{ background: T.bg2, border: `1px solid ${T.borderHi}`, borderRadius: "12px", padding: "16px 20px" }}>
               <div style={{ color: T.text, fontWeight: "700", fontSize: "14px", marginBottom: "4px" }}>🟢 Session Active: {activeSession.name}</div>
               <div style={{ color: T.textMuted, fontSize: "12px", marginBottom: "14px" }}>Enter the code shared by your leader to mark yourself present.</div>
@@ -1247,7 +1267,7 @@ function AttendanceTab({ role, currentUser }) {
                 <div style={{ color: T.textSub, fontSize: "12px", marginTop: "2px" }}>Your attendance has been recorded.</div>
               </div>
             </div>
-          ))}
+          )}
         </div>
       ) : (
         <div style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "14px 18px", marginBottom: "20px", color: T.textMuted, fontSize: "14px" }}>
