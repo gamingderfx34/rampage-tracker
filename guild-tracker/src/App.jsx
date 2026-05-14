@@ -24,10 +24,6 @@ const can = (role, action) => CAN[action]?.includes(role);
 // CONSTANTS
 // ============================================================
 const CLASSES   = ["Berserker", "Skald", "Warlord", "Volva", "Archer", "RuneFighter"];
-// Class icon images — stored in Supabase storage bucket "class-icons"
-// Keys must match CLASSES exactly. Admin/Leader/Elder can upload via Settings in member edit.
-// Fallback emoji shown when no image uploaded yet.
-const CLASS_EMOJI = { Berserker:"⚔️", Skald:"🎵", Warlord:"🛡️", Volva:"🔮", Archer:"🏹", RuneFighter:"✨" };
 const POSITIONS = ["Leader", "Elder", "Member", "Rookie"];
 
 // Position sort order for members table
@@ -304,27 +300,15 @@ function LoginPage({ onLogin }) {
     setRegError("");
     const { data: existing } = await supabase.from("users").select("id").eq("username", regForm.username.toLowerCase().trim()).maybeSingle();
     if (existing) { setRegError("Username already taken."); setRegistering(false); return; }
-    const { data: newUser, error: insertErr } = await supabase.from("users").insert([{
+    const { error: insertErr } = await supabase.from("users").insert([{
       username: regForm.username.toLowerCase().trim(),
       password: regForm.password,
       display:  regForm.display.trim(),
       role:     "member",
-    }]).select().single();
-    setRegistering(false);
-    if (insertErr) { setRegError("Registration failed: " + insertErr.message); return; }
-    // Auto-add to members roster so they appear immediately in Members tab
-    await supabase.from("members").insert([{
-      name:        regForm.display.trim(),
-      class:       "—",
-      position:    "Member",
-      growthPower: 0,
-      multiplier:  1,
-      points:      0,
-      activity:    "Active",
-      comment:     "",
     }]);
-    setRegSuccess(true);
-    setIsRegistering(false);
+    setRegistering(false);
+    if (insertErr) setRegError("Registration failed: " + insertErr.message);
+    else { setRegSuccess(true); setIsRegistering(false); }
   };
 
   const handleLogin = async () => {
@@ -561,11 +545,6 @@ function MembersTab({ role }) {
   const [sortDir, setSortDir]     = useState("desc");
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
-  const [classImages, setClassImages] = useState({}); // { "Archer": "https://...", ... }
-  const [uploadingClassImg, setUploadingClassImg] = useState(false);
-  const [classImgUploadFor, setClassImgUploadFor] = useState(""); // which class currently uploading
-  const classImgRef = useRef(null);
-  const xlsxImportRef = useRef(null);
 
   const loadMembers = async () => {
     const { data: membersData, error } = await supabase.from("members").select("*").order("growthPower", { ascending: false });
@@ -597,43 +576,12 @@ function MembersTab({ role }) {
     setLoading(false);
   };
 
-  const loadClassImages = async () => {
-    const { data } = await supabase.from("class_images").select("*");
-    if (data) {
-      const map = {};
-      data.forEach(row => { map[row.class_name] = row.image_url; });
-      setClassImages(map);
-    }
-  };
-
   useEffect(() => {
     loadMembers();
-    loadClassImages();
     const ch1 = supabase.channel("members-rt").on("postgres_changes", { event: "*", schema: "public", table: "members" }, loadMembers).subscribe();
     const ch2 = supabase.channel("users-points-rt").on("postgres_changes", { event: "*", schema: "public", table: "users" }, loadMembers).subscribe();
-    const ch3 = supabase.channel("class-images-rt").on("postgres_changes", { event: "*", schema: "public", table: "class_images" }, loadClassImages).subscribe();
-    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); };
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); };
   }, []);
-
-  const uploadClassImage = async (className, file) => {
-    if (!file) return;
-    if (!className || className === "—") { alert("Please select a valid class first before uploading an icon."); return; }
-    setUploadingClassImg(true);
-    setClassImgUploadFor(className);
-    const ext = file.name.split(".").pop();
-    const filename = `class_${className.toLowerCase()}_${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("class-icons").upload(filename, file, { upsert: true, contentType: file.type });
-    if (upErr) { alert("Upload failed: " + upErr.message); setUploadingClassImg(false); setClassImgUploadFor(""); return; }
-    const { data: urlData } = supabase.storage.from("class-icons").getPublicUrl(filename);
-    const url = urlData?.publicUrl;
-    if (url) {
-      // Upsert into class_images table
-      await supabase.from("class_images").upsert([{ class_name: className, image_url: url }], { onConflict: "class_name" });
-      setClassImages(prev => ({ ...prev, [className]: url }));
-    }
-    setUploadingClassImg(false);
-    setClassImgUploadFor("");
-  };
 
   const resetPoints = async (member) => {
     await supabase.from("users").update({ points: 0 }).eq("display", member.name);
@@ -648,24 +596,13 @@ const addPoints = async (member, amount) => {
   loadMembers();
 };
   const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" }); setShowModal(true); };
-  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: (m.class && m.class !== "—") ? m.class : "Archer", position: m.position || "Member", growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity || "Active", comment: m.comment || "" }); setShowModal(true); };
+  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: m.class, position: m.position, growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity, comment: m.comment || "" }); setShowModal(true); };
 
   const handleSave = async () => {
     if (!form.name) return;
     const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment };
-    if (editMember) {
-      const isRealMembersId = editMember.id && typeof editMember.id === "number";
-      if (isRealMembersId) {
-        await supabase.from("members").update(payload).eq("id", editMember.id);
-      } else {
-        const { data: updated } = await supabase.from("members").update(payload).eq("name", form.name).select();
-        if (!updated || updated.length === 0) {
-          await supabase.from("members").insert([{ ...payload, points: editMember.points || 0 }]);
-        }
-      }
-    } else {
-      await supabase.from("members").insert([{ ...payload, points: 0 }]);
-    }
+    if (editMember) await supabase.from("members").update(payload).eq("id", editMember.id);
+    else await supabase.from("members").insert([{ ...payload, points: 0 }]);
     setShowModal(false);
   };
 
@@ -686,58 +623,14 @@ const addPoints = async (member, amount) => {
     return typeof av === "number" ? (av - bv) * v : String(av ?? "").localeCompare(String(bv ?? "")) * v;
   });
 
-  const parseAndImportRows = async (rows) => {
-    if (!rows.length) return;
-    const VALID_CLASSES   = ["Berserker","Skald","Warlord","Volva","Archer","RuneFighter"];
-    const VALID_POSITIONS = ["Leader","Elder","Member","Rookie"];
-    const cleaned = rows.map(r => ({
-      name:        (r.name || r.Name || r.CHARACTER_NAME || "Unknown").toString().trim(),
-      class:       VALID_CLASSES.includes((r.class || r.Class || r.CLASS || "").toString().trim()) ? (r.class || r.Class || r.CLASS).toString().trim() : "Archer",
-      position:    VALID_POSITIONS.includes((r.position || r.Position || r.POSITION || "").toString().trim()) ? (r.position || r.Position || r.POSITION).toString().trim() : "Member",
-      growthPower: parseFloat(r.growthPower || r["Growth Power"] || r.GROWTH_POWER || r.growth_power || 0) || 0,
-      multiplier:  parseFloat(r.multiplier  || r.Multiplier   || r.MULTIPLIER   || 1) || 1,
-      points:      parseFloat(r.points      || r.Points       || r.POINTS       || 0) || 0,
-      activity:    ["Active","Inactive"].includes((r.activity || r.Activity || r.ACTIVITY || "Active").toString().trim()) ? (r.activity || r.Activity || r.ACTIVITY || "Active").toString().trim() : "Active",
-      comment:     (r.comment || r.Comment  || r.COMMENT      || "").toString().trim(),
-    })).filter(r => r.name && r.name !== "Unknown" || r.name === "Unknown" && rows.length === 1);
-    await supabase.from("members").insert(cleaned);
-    setImportText(""); setShowImport(false);
-    loadMembers();
-  };
-
   const handleImport = async () => {
     const lines = importText.trim().split("\n").filter(Boolean);
-    if (!lines.length) return;
-    const headers = lines[0].split(/\t|,/).map(h => h.trim().toLowerCase());
-    const isHeaderRow = headers.some(h => ["name","class","position","growth power","growthpower"].includes(h));
-    const dataLines = isHeaderRow ? lines.slice(1) : lines;
-    const rows = dataLines.filter(Boolean).map(line => {
+    const rows = lines.map(line => {
       const c = line.split(/\t|,/);
-      if (isHeaderRow) {
-        const obj = {};
-        headers.forEach((h, i) => { obj[h] = c[i]?.trim() || ""; });
-        return { name: obj.name || "Unknown", class: obj.class || "Archer", position: obj.position || "Member", growthPower: parseFloat(obj["growth power"] || obj.growthpower || 0) || 0, multiplier: parseFloat(obj.multiplier || 1) || 1, points: parseFloat(obj.points || 0) || 0, activity: obj.activity || "Active", comment: obj.comment || "" };
-      }
       return { name: c[0]?.trim() || "Unknown", class: c[1]?.trim() || "Archer", position: c[2]?.trim() || "Member", growthPower: parseFloat(c[3]) || 0, multiplier: parseFloat(c[4]) || 1, points: parseFloat(c[5]) || 0, activity: c[6]?.trim() || "Active", comment: c[7]?.trim() || "" };
     });
-    await parseAndImportRows(rows);
-  };
-
-  const handleXlsxImport = (file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
-        const wb   = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-        await parseAndImportRows(rows);
-      } catch (err) {
-        alert("Failed to read Excel file: " + err.message);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+    await supabase.from("members").insert(rows);
+    setImportText(""); setShowImport(false);
   };
 
   const exportCSV = () => {
@@ -774,15 +667,7 @@ const addPoints = async (member, amount) => {
                 <tr key={m.id} style={{ borderBottom: `1px solid ${T.border}`, background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)" }}>
                   <td style={{ padding: "10px 10px", color: T.textMuted }}>{i + 1}</td>
                   <td style={{ padding: "10px 10px", color: T.text, fontWeight: "600" }}>{m.name}</td>
-                  <td style={{ padding: "10px 10px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-                      {classImages[m.class]
-                        ? <img src={classImages[m.class]} alt={m.class} style={{ width: "24px", height: "24px", borderRadius: "4px", objectFit: "cover" }} />
-                        : <span style={{ fontSize: "16px" }}>{CLASS_EMOJI[m.class] || "⚔️"}</span>
-                      }
-                      <span style={{ color: T.textSub, fontSize: "13px" }}>{m.class && m.class !== "—" ? m.class : <span style={{ color: T.textMuted, fontStyle: "italic" }}>—</span>}</span>
-                    </div>
-                  </td>
+                  <td style={{ padding: "10px 10px", color: T.textSub }}>{m.class}</td>
                   <td style={{ padding: "10px 10px" }}><span style={{ background: pc.bg, color: pc.text, border: `1px solid ${pc.border}`, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
                   <td style={{ padding: "10px 10px", color: T.text }}>{(m.growthPower || 0).toLocaleString()}</td>
                   <td style={{ padding: "10px 10px", color: T.goldHi }}>x{(m.multiplier || 1).toFixed(2)}</td>
@@ -825,33 +710,6 @@ const addPoints = async (member, amount) => {
             ))}
             <label style={{ ...labelStyle, gridColumn: "1 / -1" }}><span style={{ color: T.textSub, fontSize: "12px" }}>Comment</span><input type="text" value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} style={inputStyle} /></label>
           </div>
-          {/* Class Image Upload — only for admin/leader/elder */}
-          {can(role, "editMembers") && (
-            <div style={{ marginTop: "14px", padding: "12px", background: T.bg3, borderRadius: "8px", border: `1px solid ${T.border}` }}>
-              <div style={{ color: T.textSub, fontSize: "12px", fontWeight: "600", marginBottom: "10px" }}>
-                🖼️ Class Icon for <span style={{ color: T.goldHi }}>{form.class}</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                {classImages[form.class]
-                  ? <img src={classImages[form.class]} alt={form.class} style={{ width: "40px", height: "40px", borderRadius: "6px", objectFit: "cover", border: `1px solid ${T.border}` }} />
-                  : <span style={{ fontSize: "28px", width: "40px", textAlign: "center" }}>{CLASS_EMOJI[form.class] || "⚔️"}</span>
-                }
-                <div style={{ flex: 1 }}>
-                  <input ref={classImgRef} type="file" accept="image/*" style={{ display: "none" }}
-                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadClassImage(form.class, f); e.target.value = ""; }} />
-                  <button type="button" onClick={() => classImgRef.current?.click()}
-                    disabled={uploadingClassImg}
-                    style={{ ...btn("purple"), fontSize: "12px", padding: "6px 14px", opacity: uploadingClassImg ? 0.6 : 1 }}>
-                    {uploadingClassImg && classImgUploadFor === form.class ? "⏳ Uploading…" : classImages[form.class] ? "🔄 Replace Icon" : "📷 Upload Icon"}
-                  </button>
-                  <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "5px" }}>
-                    This icon applies to ALL {form.class} members globally.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowModal(false)} style={btn("gray")}>Cancel</button>
             <button onClick={handleSave} style={btn("gold")}>Save</button>
@@ -862,25 +720,11 @@ const addPoints = async (member, amount) => {
       {showImport && (
         <Modal onClose={() => setShowImport(false)}>
           <h2 style={{ color: T.text, marginTop: 0 }}>📥 Import Members</h2>
-
-          {/* XLSX upload */}
-          <div style={{ background: T.bg3, border: `2px dashed ${T.borderHi}`, borderRadius: "10px", padding: "18px", textAlign: "center", marginBottom: "16px" }}>
-            <div style={{ color: T.textSub, fontSize: "13px", marginBottom: "10px" }}>📊 Upload Excel file (.xlsx)</div>
-            <input ref={xlsxImportRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleXlsxImport(f); e.target.value = ""; }} />
-            <button onClick={() => xlsxImportRef.current?.click()} style={btn("green")}>📂 Choose Excel File</button>
-            <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "8px" }}>
-              Columns: <span style={{ color: T.blueHi }}>Name · Class · Position · Growth Power · Multiplier · Points · Activity · Comment</span>
-            </div>
-          </div>
-
-          <div style={{ color: T.textMuted, fontSize: "12px", textAlign: "center", marginBottom: "12px" }}>— or paste CSV / tab-separated text below —</div>
-          <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={6}
-            placeholder={"Name,Class,Position,GrowthPower,Multiplier,Points,Activity,Comment\nRampage,Berserker,Leader,250500,1,0,Active,"}
-            style={{ ...inputStyle, fontFamily: "monospace", fontSize: "12px", resize: "vertical" }} />
+          <p style={{ color: T.textSub, fontSize: "13px" }}>Paste CSV or tab-separated rows:<br /><code style={{ color: T.blueHi }}>Name, Class, Position, GrowthPower, Multiplier, Points, Activity, Comment</code></p>
+          <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={8} style={{ ...inputStyle, fontFamily: "monospace", fontSize: "12px", resize: "vertical" }} />
           <div style={{ display: "flex", gap: "8px", marginTop: "12px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowImport(false)} style={btn("gray")}>Cancel</button>
-            <button onClick={handleImport} style={btn("green")}>Import CSV</button>
+            <button onClick={handleImport} style={btn("green")}>Import</button>
           </div>
         </Modal>
       )}
@@ -1130,17 +974,6 @@ function BossTimerTab({ role }) {
 // ============================================================
 // ATTENDANCE TAB — real-time, member check-in + admin mark
 // ============================================================
-function generateSessionCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
-}
-
-// Points awarded per attendance check-in (special rule for SINDRI)
-const ATTENDANCE_POINTS = 5;
-const SINDRI_BONUS_POINTS = 10; // SINDRI gets 10 instead of 5
-
 function AttendanceTab({ role, currentUser }) {
   const [sessions, setSessions]     = useState([]);
   const [records, setRecords]       = useState([]);
@@ -1150,10 +983,6 @@ function AttendanceTab({ role, currentUser }) {
   const [showNewSession, setShowNewSession] = useState(false);
   const [newSessionName, setNewSessionName] = useState("");
   const [selectedSession, setSelectedSession] = useState(null);
-  const [codeInput, setCodeInput]   = useState("");
-  const [codeError, setCodeError]   = useState("");
-  const [codeSuccess, setCodeSuccess] = useState(false);
-  const [copied, setCopied]         = useState(false);
 
   const loadAll = async () => {
     const [{ data: sData }, { data: rData }, { data: mData }] = await Promise.all([
@@ -1183,17 +1012,17 @@ function AttendanceTab({ role, currentUser }) {
 
   const createSession = async () => {
     if (!newSessionName.trim()) return;
+    // Close any active session first
     if (activeSession) {
       await supabase.from("attendance_sessions").update({ is_active: false, ended_at: new Date().toISOString() }).eq("id", activeSession.id);
     }
-    const sessionCode = generateSessionCode();
     const { data } = await supabase.from("attendance_sessions").insert([{
-      name:         newSessionName.trim(),
-      is_active:    true,
-      created_by:   currentUser.display,
-      session_code: sessionCode,
+      name: newSessionName.trim(),
+      is_active: true,
+      created_by: currentUser.display,
     }]).select().single();
-    setNewSessionName(""); setShowNewSession(false); setCodeSuccess(false);
+    setNewSessionName("");
+    setShowNewSession(false);
     if (data) setSelectedSession(data.id);
   };
 
@@ -1212,23 +1041,15 @@ const deleteSession = async (sessionId) => {
   const checkIn = async (memberName, sessionId, markedBy) => {
     const sid = sessionId || activeSession?.id;
     if (!sid) return alert("No active session to check in to.");
+    // Prevent duplicate
     const existing = records.find(r => r.session_id === sid && r.member_name === memberName);
     if (existing) return;
     await supabase.from("attendance_records").insert([{
-      session_id:    sid,
-      member_name:   memberName,
+      session_id: sid,
+      member_name: memberName,
       checked_in_at: new Date().toISOString(),
-      marked_by:     markedBy || currentUser.display,
+      marked_by: markedBy || currentUser.display,
     }]);
-    // Award attendance points: SINDRI gets 10, everyone else gets 5
-    const isSindri = memberName.toLowerCase() === "sindri";
-    const pts = isSindri ? SINDRI_BONUS_POINTS : ATTENDANCE_POINTS;
-    // Add points to users table
-    const { data: u } = await supabase.from("users").select("id, points").eq("display", memberName).maybeSingle();
-    if (u) await supabase.from("users").update({ points: (u.points || 0) + pts }).eq("id", u.id);
-    // Add points to members table too
-    const { data: mem } = await supabase.from("members").select("id, points").eq("name", memberName).maybeSingle();
-    if (mem) await supabase.from("members").update({ points: (mem.points || 0) + pts }).eq("id", mem.id);
   };
 
   const removeRecord = async (recordId) => {
@@ -1237,27 +1058,6 @@ const deleteSession = async (sessionId) => {
 
   const selfCheckIn = async () => {
     await checkIn(currentUser.display, activeSession?.id, currentUser.display);
-    setCodeSuccess(true);
-  };
-
-  const submitCode = async () => {
-    setCodeError("");
-    if (!codeInput.trim()) { setCodeError("Please enter the session code."); return; }
-    if (!activeSession) { setCodeError("No active session right now."); return; }
-    const entered = codeInput.trim().toUpperCase();
-    const correct = (activeSession.session_code || "").toUpperCase();
-    if (!correct) { setCodeError("This session has no code. Ask your leader."); return; }
-    if (entered !== correct) { setCodeError("❌ Wrong code. Ask your leader for the correct code."); setCodeInput(""); return; }
-    const already = records.some(r => r.session_id === activeSession.id && r.member_name === currentUser.display);
-    if (already) { setCodeError("You are already checked in!"); return; }
-    await checkIn(currentUser.display, activeSession.id, currentUser.display);
-    setCodeSuccess(true); setCodeInput("");
-  };
-
-  const copyCode = () => {
-    if (activeSession?.session_code) {
-      navigator.clipboard.writeText(activeSession.session_code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-    }
   };
 
   // Get records for the selected session
@@ -1291,58 +1091,22 @@ const deleteSession = async (sessionId) => {
         {selectedSess && <StatBadge label="Absent" value={absentCount < 0 ? 0 : absentCount} color={T.redHi} />}
       </div>
 
-      {/* Active session block */}
+      {/* Active session banner + self check-in */}
       {activeSession ? (
-        <div style={{ marginBottom: "20px" }}>
-          {/* LEADER/ELDER/ADMIN — show the code prominently with copy button */}
-          {can(role, "markAttendance") && (
-            <div style={{ background: "#0d2e1e", border: `1px solid ${T.green}55`, borderRadius: "12px", padding: "16px 20px", marginBottom: "10px" }}>
-              <div style={{ color: T.greenHi, fontWeight: "700", fontSize: "14px", marginBottom: "2px" }}>🟢 Active: {activeSession.name}</div>
-              <div style={{ color: T.textSub, fontSize: "12px", marginBottom: "12px" }}>Started by {activeSession.created_by} · {formatDate(activeSession.created_at)}</div>
-              <div style={{ color: T.textSub, fontSize: "12px", fontWeight: "600", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>📢 Share this code — members type it to check in:</div>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                <div style={{ background: T.bg0, border: `2px solid ${T.gold}88`, borderRadius: "10px", padding: "10px 24px", letterSpacing: "0.35em", fontSize: "28px", fontWeight: "900", color: T.goldHi, fontFamily: "monospace" }}>
-                  {activeSession.session_code || "——"}
-                </div>
-                <button onClick={copyCode} style={{ ...btn(copied ? "green" : "gold"), fontSize: "13px", padding: "8px 18px" }}>
-                  {copied ? "✅ Copied!" : "📋 Copy Code"}
-                </button>
-              </div>
-              <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "8px" }}>Share in Discord / in-game chat. Only people with the code can check in.</div>
-            </div>
-          )}
-
-          {/* MEMBER code entry — also shown to leaders so they can check themselves in */}
-          {!(isAlreadyCheckedIn || codeSuccess) ? (
-            <div style={{ background: T.bg2, border: `1px solid ${T.borderHi}`, borderRadius: "12px", padding: "16px 20px" }}>
-              <div style={{ color: T.text, fontWeight: "700", fontSize: "14px", marginBottom: "4px" }}>
-                {can(role, "markAttendance") ? "Also check yourself in:" : `🟢 Session Active: ${activeSession.name}`}
-              </div>
-              {!can(role, "markAttendance") && (
-                <div style={{ color: T.textMuted, fontSize: "12px", marginBottom: "12px" }}>Enter the code shared by your leader to mark yourself present.</div>
-              )}
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginTop: "10px" }}>
-                <input value={codeInput} onChange={e => { setCodeInput(e.target.value.toUpperCase()); setCodeError(""); }}
-                  onKeyDown={e => e.key === "Enter" && submitCode()} maxLength={6}
-                  placeholder="Enter code e.g. WOLF47"
-                  style={{ ...inputStyle, width: "180px", letterSpacing: "0.2em", fontSize: "18px", fontWeight: "700", fontFamily: "monospace", textTransform: "uppercase" }} />
-                <button onClick={submitCode} style={{ ...btn("green"), fontSize: "14px", padding: "9px 22px" }}>✅ Check In</button>
-              </div>
-              {codeError && <div style={{ color: T.redHi, fontSize: "13px", marginTop: "8px" }}>{codeError}</div>}
-            </div>
+        <div style={{ background: T.greenGlow, border: `1px solid ${T.green}55`, borderRadius: "12px", padding: "14px 18px", marginBottom: "20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <div style={{ color: T.greenHi, fontWeight: "700", fontSize: "14px" }}>🟢 Active Session: {activeSession.name}</div>
+            <div style={{ color: T.textSub, fontSize: "12px", marginTop: "2px" }}>Started by {activeSession.created_by} · {formatDate(activeSession.created_at)}</div>
+          </div>
+          {!isAlreadyCheckedIn ? (
+            <button onClick={selfCheckIn} style={{ ...btn("green"), fontSize: "14px", padding: "10px 22px" }}>✅ Check In Now</button>
           ) : (
-            <div style={{ background: T.greenGlow, border: `1px solid ${T.green}55`, borderRadius: "12px", padding: "14px 20px", display: "flex", alignItems: "center", gap: "12px" }}>
-              <span style={{ fontSize: "24px" }}>✅</span>
-              <div>
-                <div style={{ color: T.greenHi, fontWeight: "700", fontSize: "14px" }}>You're checked in for: {activeSession.name}</div>
-                <div style={{ color: T.textSub, fontSize: "12px", marginTop: "2px" }}>+{currentUser.display.toLowerCase() === "sindri" ? SINDRI_BONUS_POINTS : ATTENDANCE_POINTS} points awarded!</div>
-              </div>
-            </div>
+            <span style={{ background: T.greenGlow, border: `1px solid ${T.green}55`, color: T.greenHi, padding: "8px 18px", borderRadius: "8px", fontSize: "13px", fontWeight: "600" }}>✓ Checked In</span>
           )}
         </div>
       ) : (
         <div style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "14px 18px", marginBottom: "20px", color: T.textMuted, fontSize: "14px" }}>
-          ⚪ No active session. {can(role, "markAttendance") ? 'Click "+ New Session" to start one.' : "Wait for your leader to open a session."}
+          ⚪ No active session. {can(role, "markAttendance") ? 'Click "+ New Session" to start one.' : "Wait for admin to open a session."}
         </div>
       )}
 
@@ -1354,13 +1118,10 @@ const deleteSession = async (sessionId) => {
             {sessions.map(s => (
               <button key={s.id} onClick={() => setSelectedSession(s.id)} style={{ padding: "6px 14px", borderRadius: "8px", border: `1px solid ${selectedSession === s.id ? T.blue : T.border}`, cursor: "pointer", background: selectedSession === s.id ? "#1a2f5c" : T.bg3, color: selectedSession === s.id ? T.blueHi : T.textSub, fontSize: "12px", fontWeight: selectedSession === s.id ? "700" : "400", display: "flex", alignItems: "center", gap: "6px" }}>
                 {s.is_active && <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: T.greenHi }}></span>}
-                {s.name}
-                {s.is_active && s.session_code && can(role, "markAttendance") && (
-                  <span style={{ background: T.bg0, color: T.goldHi, border: `1px solid ${T.gold}44`, padding: "1px 7px", borderRadius: "4px", fontFamily: "monospace", fontSize: "11px", letterSpacing: "0.1em" }}>{s.session_code}</span>
-                )}
-                {can(role, "markAttendance") && (
-                  <span onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} style={{ color: "#f87171", marginLeft: "4px", cursor: "pointer", fontSize: "10px" }}>✕</span>
-                )}
+{s.name}
+{can(role, "markAttendance") && (
+  <span onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} style={{ color: "#f87171", marginLeft: "6px", cursor: "pointer", fontSize: "10px" }}>✕</span>
+)}
               </button>
             ))}
           </div>
@@ -1370,15 +1131,8 @@ const deleteSession = async (sessionId) => {
       {/* Attendance table for selected session */}
       {selectedSess && (
         <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ color: T.text, fontWeight: "600" }}>{selectedSess.name}</div>
-              {selectedSess.session_code && can(role, "markAttendance") && (
-                <span style={{ background: T.bg3, border: `1px solid ${T.gold}55`, borderRadius: "6px", padding: "2px 10px", color: T.goldHi, fontFamily: "monospace", fontSize: "13px", fontWeight: "700", letterSpacing: "0.15em" }}>
-                  Code: {selectedSess.session_code}
-                </span>
-              )}
-            </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+            <div style={{ color: T.text, fontWeight: "600" }}>{selectedSess.name}</div>
             <div style={{ color: T.textMuted, fontSize: "12px" }}>{formatDate(selectedSess.created_at)}{!selectedSess.is_active && selectedSess.ended_at ? ` — ${formatDate(selectedSess.ended_at)}` : ""}</div>
           </div>
 
@@ -1437,11 +1191,8 @@ const deleteSession = async (sessionId) => {
             <span style={{ color: T.textSub, fontSize: "12px" }}>Session Name (e.g. "Guild War 2025-06-01", "Weekly Raid")</span>
             <input type="text" value={newSessionName} onChange={e => setNewSessionName(e.target.value)} onKeyDown={e => e.key === "Enter" && createSession()} style={inputStyle} autoFocus placeholder="e.g. Weekly Raid - May 14" />
           </label>
-          <div style={{ marginTop: "10px", background: T.blueGlow, border: `1px solid ${T.blue}44`, borderRadius: "8px", color: T.blueHi, fontSize: "12px", padding: "10px 14px" }}>
-            🔑 A unique 6-character code will be generated. Share it in Discord/chat — members must type it to check in.
-          </div>
           {activeSession && (
-            <div style={{ marginTop: "8px", background: T.goldGlow, border: `1px solid ${T.gold}44`, borderRadius: "8px", color: T.gold, fontSize: "12px", padding: "10px 14px" }}>
+            <div style={{ marginTop: "10px", background: T.goldGlow, border: `1px solid ${T.gold}44`, borderRadius: "8px", color: T.gold, fontSize: "12px", padding: "10px 14px" }}>
               ⚠️ This will close the current active session: <strong>{activeSession.name}</strong>
             </div>
           )}
