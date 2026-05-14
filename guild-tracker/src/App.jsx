@@ -1210,17 +1210,18 @@ const deleteSession = async (sessionId) => {
 // AUCTION TAB — with real-time point deduction / refund
 // ============================================================
 function AuctionTab({ role, currentUser }) {
-  const [auctions, setAuctions]   = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [now, setNow]             = useState(Date.now());
-  const [filter, setFilter]       = useState("All");
-  const [showModal, setShowModal] = useState(false);
-  const [editItem, setEditItem]   = useState(null);
-  const [form, setForm]           = useState({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48, durationUnit: "hours", imageUrl: "" });
-  const [bidModal, setBidModal]   = useState(null);
-  const [bidForm, setBidForm]     = useState({ amount: "", bidder: "" });
-  const [saveError, setSaveError] = useState("");
-  const [bidError, setBidError]   = useState("");
+  const [auctions, setAuctions]         = useState([]);
+  const [declaredItemIds, setDeclaredItemIds] = useState(new Set());
+  const [loading, setLoading]           = useState(true);
+  const [now, setNow]                   = useState(Date.now());
+  const [filter, setFilter]             = useState("All");
+  const [showModal, setShowModal]       = useState(false);
+  const [editItem, setEditItem]         = useState(null);
+  const [form, setForm]                 = useState({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48, durationUnit: "hours", imageUrl: "" });
+  const [bidModal, setBidModal]         = useState(null);
+  const [bidForm, setBidForm]           = useState({ amount: "", bidder: "" });
+  const [saveError, setSaveError]       = useState("");
+  const [bidError, setBidError]         = useState("");
   const [uploadingImg, setUploadingImg] = useState(false);
   const [declareModal, setDeclareModal] = useState(null);
   const [declareForm, setDeclareForm]   = useState({ winnerName: "", amount: "" });
@@ -1279,15 +1280,21 @@ function AuctionTab({ role, currentUser }) {
         endsAt:     row.endsAt || row.ends_at ? new Date(row.endsAt ?? row.ends_at).getTime() : Date.now() + 3600000 * 48,
       })));
     }
+    // Load which item_ids already have a declared winner
+    const { data: winnerRows } = await supabase.from("auction_winners").select("item_id");
+    if (winnerRows) setDeclaredItemIds(new Set(winnerRows.map(w => w.item_id)));
     setLoading(false);
   };
 
   useEffect(() => {
     loadAuctions();
-    const ch = supabase.channel("auctions-rt")
+    const ch1 = supabase.channel("auctions-rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "auction_items" }, loadAuctions)
       .subscribe();
-    return () => supabase.removeChannel(ch);
+    const ch2 = supabase.channel("auction-winners-rt-auction")
+      .on("postgres_changes", { event: "*", schema: "public", table: "auction_winners" }, loadAuctions)
+      .subscribe();
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); };
   }, []);
 
   const buildPayload = (fields) => {
@@ -1466,10 +1473,13 @@ function AuctionTab({ role, currentUser }) {
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}><span style={{ color: T.textMuted, fontSize: "12px" }}>Highest Bid</span><span style={{ color: item.highestBid > 0 ? T.goldHi : T.text, fontWeight: "700" }}>{item.highestBid} PTS</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}><span style={{ color: T.textMuted, fontSize: "12px" }}>Bidder</span><span style={{ color: T.textSub, fontSize: "13px" }}>{item.bidder}</span></div>
                 <div style={{ display: "flex", gap: "6px" }}>
-                  {!ended && can(role, "placeBid") && <button onClick={() => openBid(item)} style={{ flex: 1, ...btn("gold"), padding: "6px", justifyContent: "center", textAlign: "center" }}>Place Bid</button>}
+                  {declaredItemIds.has(item.id)
+                    ? <div style={{ flex: 1, background: T.greenGlow, border: `1px solid ${T.green}55`, borderRadius: "8px", padding: "6px", textAlign: "center", color: T.greenHi, fontSize: "12px", fontWeight: "700" }}>🏆 Winner Declared</div>
+                    : (!ended && can(role, "placeBid") && <button onClick={() => openBid(item)} style={{ flex: 1, ...btn("gold"), padding: "6px", justifyContent: "center", textAlign: "center" }}>Place Bid</button>)
+                  }
                   {can(role, "editAuction") && <button onClick={() => openEdit(item)} style={{ ...btn("gray"), padding: "6px 10px" }}>Edit</button>}
                   {can(role, "editAuction") && <button onClick={() => handleDelete(item.id)} style={{ ...btn("red"), padding: "6px 10px" }}>✕</button>}
-                  {can(role, "editAuction") && <button onClick={() => openDeclare(item)} style={{ ...btn("green"), padding: "6px 10px", fontSize: "11px" }} title="Declare Winner manually">🏆</button>}
+                  {can(role, "editAuction") && !declaredItemIds.has(item.id) && <button onClick={() => openDeclare(item)} style={{ ...btn("green"), padding: "6px 10px", fontSize: "11px" }} title="Declare Winner manually">🏆</button>}
                 </div>
               </div>
             </div>
