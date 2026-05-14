@@ -1848,6 +1848,7 @@ export default function GuildTracker() {
     try { const saved = localStorage.getItem("guild_user"); return saved ? JSON.parse(saved) : null; } catch { return null; }
   });
   const [tab, setTab] = useState("members");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -1869,59 +1870,217 @@ export default function GuildTracker() {
   const rc   = roleColors[role] || roleColors.member;
 
   const tabs = [
-    { id: "members",    label: "👥 Members"      },
-    { id: "attendance", label: "📋 Attendance"    },
-    { id: "bosses",     label: "👹 Boss Timer"    },
-    { id: "auction",    label: "🏺 Auction House" },
-    { id: "winners",    label: "🥇 Winners"       },
-    ...(can(role, "manageUsers") ? [{ id: "users", label: "🔐 Manage Users" }] : []),
+    { id: "members",    label: "Members",      icon: "👥" },
+    { id: "attendance", label: "Attendance",   icon: "📋" },
+    { id: "bosses",     label: "Boss Timer",   icon: "👹" },
+    { id: "auction",    label: "Auction House",icon: "🏺" },
+    { id: "winners",    label: "Winners",      icon: "🥇" },
+    ...(can(role, "manageUsers") ? [{ id: "users", label: "Manage Users", icon: "🔐" }] : []),
   ];
+
+  const SIDEBAR_W = "240px";
+
+  const sidebarStyles = `
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap');
+    @keyframes titleGlow {
+      0%,100% { text-shadow: 0 0 18px #e8b84b99, 0 0 40px #c9973a55, 0 0 80px #4a7fd422; }
+      50%      { text-shadow: 0 0 28px #e8b84bcc, 0 0 60px #c9973a88, 0 0 120px #4a7fd455; }
+    }
+    @keyframes logoFloat {
+      0%,100% { transform: translateY(0px) drop-shadow(0 0 16px #c9973a66); }
+      50%      { transform: translateY(-4px) drop-shadow(0 0 28px #c9973a99); }
+    }
+    @keyframes sidebarSlideIn {
+      from { transform: translateX(-100%); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+    @keyframes overlayFadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 20px; margin: 2px 10px;
+      border-radius: 10px; cursor: pointer;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.03em;
+      border: 1px solid transparent;
+      transition: all 0.18s ease;
+      color: #8892a4;
+      white-space: nowrap;
+    }
+    .nav-item:hover {
+      background: #161926; color: #e8eaf0;
+      border-color: #252a3d;
+    }
+    .nav-item.active {
+      background: linear-gradient(135deg, #1a2f5c 0%, #1c1230 100%);
+      color: #e8b84b;
+      border-color: #c9973a44;
+      box-shadow: 0 0 18px #c9973a22, inset 0 0 12px #c9973a0a;
+    }
+    .nav-item.active .nav-icon { filter: drop-shadow(0 0 6px #e8b84b88); }
+    .hamburger-btn {
+      background: #111422; border: 1px solid #252a3d;
+      border-radius: 8px; padding: 8px 10px;
+      cursor: pointer; color: #e8eaf0; font-size: 18px;
+      display: none; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    @media (max-width: 768px) {
+      .hamburger-btn { display: flex !important; }
+      .desktop-sidebar { display: none !important; }
+      .main-content { margin-left: 0 !important; }
+    }
+    .sidebar-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #2d3452, transparent);
+      margin: 10px 16px;
+    }
+    .sidebar-section-label {
+      color: #4a5168; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.12em;
+      padding: 6px 22px 4px;
+    }
+    .user-card {
+      margin: 10px; padding: 12px 14px;
+      background: #111422; border: 1px solid #1c2030;
+      border-radius: 12px;
+    }
+  `;
+
+  const Sidebar = ({ mobile = false }) => (
+    <div style={{
+      width: SIDEBAR_W, minHeight: "100vh", background: "#0c0e1a",
+      borderRight: "1px solid #1c2030",
+      display: "flex", flexDirection: "column",
+      boxShadow: mobile ? "4px 0 32px rgba(0,0,0,0.6)" : "none",
+      animation: mobile ? "sidebarSlideIn 0.25s ease" : "none",
+      position: mobile ? "fixed" : "fixed",
+      top: 0, left: 0, zIndex: mobile ? 300 : 100,
+      overflowY: "auto",
+    }}>
+      {/* Brand */}
+      <div style={{ padding: "28px 16px 20px", textAlign: "center", borderBottom: "1px solid #1c2030" }}>
+        <img
+          src="https://mbalsusqtkbtoxuawjau.supabase.co/storage/v1/object/public/asset/RAMPAGE%20FOR%20APP.png"
+          alt="Rampage"
+          style={{ width: "82px", height: "82px", objectFit: "contain", animation: "logoFloat 3s ease-in-out infinite" }}
+          onError={e => { e.target.style.display = "none"; }}
+        />
+        <div style={{ marginTop: "14px" }}>
+          <div style={{
+            fontFamily: "'Cinzel', 'Segoe UI', serif",
+            fontSize: "20px", fontWeight: "900",
+            letterSpacing: "0.12em",
+            background: "linear-gradient(135deg, #e8b84b 0%, #6a9fe4 60%, #e8b84b 100%)",
+            backgroundSize: "200% 100%",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            animation: "titleGlow 2.5s ease-in-out infinite",
+            lineHeight: 1.1,
+          }}>RAMPAGE<br />TRACKER</div>
+          <div style={{ color: "#4a5168", fontSize: "10px", letterSpacing: "0.14em", marginTop: "6px", textTransform: "uppercase" }}>Guild Management</div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav style={{ flex: 1, paddingTop: "12px" }}>
+        <div className="sidebar-section-label">Navigation</div>
+        {tabs.map(t => (
+          <div
+            key={t.id}
+            className={`nav-item${tab === t.id ? " active" : ""}`}
+            onClick={() => { setTab(t.id); setSidebarOpen(false); }}
+          >
+            <span className="nav-icon" style={{ fontSize: "18px", width: "22px", textAlign: "center" }}>{t.icon}</span>
+            <span>{t.label}</span>
+            {tab === t.id && <div style={{ marginLeft: "auto", width: "6px", height: "6px", borderRadius: "50%", background: "#e8b84b", boxShadow: "0 0 8px #e8b84b" }} />}
+          </div>
+        ))}
+      </nav>
+
+      {/* Divider */}
+      <div className="sidebar-divider" />
+
+      {/* User card at bottom */}
+      <div className="user-card">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg, #1a2f5c, #281545)", border: "2px solid #252a3d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0 }}>
+            {currentUser.display?.[0]?.toUpperCase() || "?"}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: "#e8eaf0", fontWeight: "700", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentUser.display}</div>
+            <span style={{ background: rc.bg, color: rc.text, padding: "1px 8px", borderRadius: "20px", fontSize: "10px", fontWeight: "700" }}>{rc.label}</span>
+          </div>
+        </div>
+        <button
+          onClick={() => { setCurrentUser(null); localStorage.removeItem("guild_user"); }}
+          style={{ marginTop: "10px", width: "100%", background: "#3a121244", border: "1px solid #c03a3a44", color: "#e05555", borderRadius: "8px", padding: "7px", cursor: "pointer", fontSize: "12px", fontWeight: "600", transition: "all 0.15s" }}
+        >
+          ← Logout
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg0, fontFamily: "'Segoe UI', system-ui, sans-serif", color: T.text,
       backgroundImage: "radial-gradient(ellipse at 10% 0%, #1a1f3a22 0%, transparent 50%), radial-gradient(ellipse at 90% 100%, #2a150a18 0%, transparent 50%)" }}>
 
-      {/* ── Header ── */}
-      <div style={{ background: T.bg1, borderBottom: `1px solid ${T.borderHi}`, padding: "0 24px",
-        boxShadow: `0 2px 20px rgba(0,0,0,0.4)` }}>
-        <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 0", flexWrap: "wrap", gap: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-              <img src="https://mbalsusqtkbtoxuawjau.supabase.co/storage/v1/object/public/asset/RAMPAGE%20FOR%20APP.png" alt="Rampage" style={{ width: "68px", height: "68px", objectFit: "contain" }} onError={e => { e.target.style.display = "none"; }} />
-              <div>
-                <h1 style={{ margin: 0, fontSize: "22px", fontWeight: "800", letterSpacing: "0.1em",
-                  background: `linear-gradient(135deg, ${T.goldHi} 0%, ${T.blueHi} 100%)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>RAMPAGE TRACKER</h1>
-                <p style={{ margin: "2px 0 0", color: T.textMuted, fontSize: "12px", letterSpacing: "0.04em" }}>Attendance · Boss Timers · Auction House · Winners</p>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ color: T.text, fontWeight: "600", fontSize: "14px" }}>{currentUser.display}</div>
-                <span style={{ background: rc.bg, color: rc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "11px" }}>{rc.label}</span>
-              </div>
-              <button onClick={() => { setCurrentUser(null); localStorage.removeItem("guild_user"); }} style={{ ...btn("red"), fontSize: "13px" }}>Logout</button>
-            </div>
-          </div>
+      <style>{sidebarStyles}</style>
 
-          {/* Tabs */}
-          <div style={{ display: "flex", gap: "2px", marginTop: "14px", flexWrap: "wrap", overflowX: "auto" }}>
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "10px 18px", background: tab === t.id ? T.bg3 : "transparent", border: "none", borderBottom: `2px solid ${tab === t.id ? T.gold : "transparent"}`, color: tab === t.id ? T.text : T.textMuted, cursor: "pointer", fontSize: "13px", fontWeight: tab === t.id ? "700" : "400", borderRadius: "6px 6px 0 0", whiteSpace: "nowrap", transition: "color 0.15s" }}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* Desktop Sidebar */}
+      <div className="desktop-sidebar">
+        <Sidebar />
       </div>
 
-      {/* ── Content ── */}
-      <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "28px 24px" }}>
-        {tab === "members"    && <MembersTab role={role} />}
-        {tab === "attendance" && <AttendanceTab role={role} currentUser={currentUser} />}
-        {tab === "bosses"     && <BossTimerTab role={role} />}
-        {tab === "auction"    && <AuctionTab role={role} currentUser={currentUser} />}
-        {tab === "winners"    && <WinnersTab role={role} currentUser={currentUser} />}
-        {tab === "users"      && can(role, "manageUsers") && <UsersTab currentUser={currentUser} />}
+      {/* Mobile overlay + drawer */}
+      {sidebarOpen && (
+        <>
+          <div
+            onClick={() => setSidebarOpen(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 200, animation: "overlayFadeIn 0.2s ease" }}
+          />
+          <Sidebar mobile />
+        </>
+      )}
+
+      {/* Main content area */}
+      <div className="main-content" style={{ marginLeft: SIDEBAR_W, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+
+        {/* Mobile top bar */}
+        <div style={{ display: "none", position: "sticky", top: 0, zIndex: 50, background: "#0c0e1a", borderBottom: "1px solid #1c2030", padding: "12px 16px", alignItems: "center", gap: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.4)" }}
+          className="mobile-topbar">
+          <style>{`.mobile-topbar { display: none !important; } @media (max-width: 768px) { .mobile-topbar { display: flex !important; } }`}</style>
+          <button className="hamburger-btn" style={{ display: "flex" }} onClick={() => setSidebarOpen(true)}>☰</button>
+          <div style={{
+            fontFamily: "'Cinzel', serif", fontSize: "16px", fontWeight: "900", letterSpacing: "0.1em",
+            background: "linear-gradient(135deg, #e8b84b, #6a9fe4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          }}>RAMPAGE TRACKER</div>
+          <div style={{ marginLeft: "auto" }}>
+            <span style={{ background: rc.bg, color: rc.text, padding: "2px 10px", borderRadius: "20px", fontSize: "11px", fontWeight: "700" }}>{currentUser.display}</span>
+          </div>
+        </div>
+
+        {/* Page header strip */}
+        <div style={{ padding: "20px 28px 0", borderBottom: "1px solid #1c2030", background: "#0c0e1a55" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "16px" }}>
+            <span style={{ fontSize: "24px" }}>{tabs.find(t => t.id === tab)?.icon}</span>
+            <div>
+              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "800", color: "#e8eaf0", letterSpacing: "0.04em" }}>{tabs.find(t => t.id === tab)?.label}</h2>
+              <div style={{ color: "#4a5168", fontSize: "11px", marginTop: "1px", textTransform: "uppercase", letterSpacing: "0.08em" }}>Rampage Guild · {currentUser.display}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, padding: "24px 28px" }}>
+          {tab === "members"    && <MembersTab role={role} />}
+          {tab === "attendance" && <AttendanceTab role={role} currentUser={currentUser} />}
+          {tab === "bosses"     && <BossTimerTab role={role} />}
+          {tab === "auction"    && <AuctionTab role={role} currentUser={currentUser} />}
+          {tab === "winners"    && <WinnersTab role={role} currentUser={currentUser} />}
+          {tab === "users"      && can(role, "manageUsers") && <UsersTab currentUser={currentUser} />}
+        </div>
       </div>
     </div>
   );
