@@ -492,7 +492,13 @@ function MembersTab({ role }) {
     await supabase.from("members").update({ points: 0 }).eq("id", member.id);
     loadMembers();
   };
-
+const addPoints = async (member, amount) => {
+  const current = member.points || 0;
+  const newPoints = Math.max(0, current + amount);
+  await supabase.from("users").update({ points: newPoints }).eq("display", member.name);
+  await supabase.from("members").update({ points: newPoints }).eq("id", member.id);
+  loadMembers();
+};
   const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" }); setShowModal(true); };
   const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: m.class, position: m.position, growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity, comment: m.comment || "" }); setShowModal(true); };
 
@@ -574,7 +580,8 @@ function MembersTab({ role }) {
                     {can(role, "editMembers") && (
                       <button onClick={() => resetPoints(m)} style={{ background: "none", border: "none", color: T.redHi, cursor: "pointer", fontSize: "11px", marginLeft: "6px" }} title="Reset points">↺</button>
                     )}
-                  </td>
+					<button onClick={() => { const v = prompt("Add or remove points (e.g. 50 or -50):"); if (v !== null) addPoints(m, parseInt(v) || 0); }} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: "11px", marginLeft: "4px" }} title="Add/Remove points">✎</button>
+  </td>
                   <td style={{ padding: "10px 10px" }}><span style={{ background: ac.bg, color: ac.text, padding: "3px 10px", borderRadius: "20px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}><span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ac.dot }}></span>{m.activity}</span></td>
                   <td style={{ padding: "10px 10px", color: T.textSub, maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.comment || "—"}</td>
                   {can(role, "editMembers") && (
