@@ -262,9 +262,9 @@ if (!whitelist) { setRegError("❌ Your Account ID is not on the clan whitelist.
             <button onClick={() => { setIsRegistering(true); setError(""); setRegSuccess(false); }} style={{ background: "none", border: "none", color: T.textMuted, fontSize: "13px", cursor: "pointer" }}>Register new account</button>
           </div>
         ) : (
-<input placeholder="Your In-Game Account ID (from Settings > Account)" value={regForm.account_id} onChange={e => setRegForm({ ...regForm, account_id: e.target.value })} style={inputStyle} />
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <input placeholder="Display Name (character name)" value={regForm.display} onChange={e => setRegForm({ ...regForm, display: e.target.value })} style={inputStyle} autoFocus />
+            <input placeholder="Your In-Game Account ID (from Settings > Account)" value={regForm.account_id} onChange={e => setRegForm({ ...regForm, account_id: e.target.value })} style={inputStyle} />
+<input placeholder="Display Name (character name)" value={regForm.display} onChange={e => setRegForm({ ...regForm, display: e.target.value })} style={inputStyle} autoFocus />
             <input placeholder="Username (for login)" value={regForm.username} onChange={e => setRegForm({ ...regForm, username: e.target.value })} style={inputStyle} />
             <input type="password" placeholder="Password" value={regForm.password} onChange={e => setRegForm({ ...regForm, password: e.target.value })} style={inputStyle} />
             {regError && <div style={{ color: T.redHi, fontSize: "13px" }}>{regError}</div>}
