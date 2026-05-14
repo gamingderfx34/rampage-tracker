@@ -1657,12 +1657,75 @@ function WinnersTab({ role, currentUser }) {
   const totalClaimed   = winners.filter(w => w.claimed).length;
   const totalUnclaimed = winners.filter(w => !w.claimed).length;
 
+  const exportToExcel = () => {
+    if (winners.length === 0) { alert("No winner records to export."); return; }
+    // Build rows for main sheet
+    const rows = winners.map((w, i) => ({
+      "#":            i + 1,
+      "Item Name":    w.item_name || "Unknown Item",
+      "Winner":       w.bidder || "—",
+      "Points Spent": w.amount || 0,
+      "Status":       w.claimed ? "Claimed" : "Unclaimed",
+      "Claimed By":   w.claimed_by || "—",
+      "Claimed At":   w.claimed_at ? new Date(w.claimed_at).toLocaleString("en-PH") : "—",
+      "Won At":       w.created_at ? new Date(w.created_at).toLocaleString("en-PH") : "—",
+    }));
+
+    // Build summary sheet per member
+    const summary = Object.entries(
+      winners.reduce((acc, w) => {
+        if (!acc[w.bidder]) acc[w.bidder] = { wins: 0, spent: 0, claimed: 0, unclaimed: 0 };
+        acc[w.bidder].wins++;
+        acc[w.bidder].spent += w.amount || 0;
+        if (w.claimed) acc[w.bidder].claimed++; else acc[w.bidder].unclaimed++;
+        return acc;
+      }, {})
+    ).sort((a, b) => b[1].spent - a[1].spent)
+     .map(([name, s], i) => ({
+       "#": i + 1,
+       "Member":        name,
+       "Total Wins":    s.wins,
+       "Points Spent":  s.spent,
+       "Claimed":       s.claimed,
+       "Unclaimed":     s.unclaimed,
+     }));
+
+    import("https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs").then(XLSX => {
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1 — All Winners
+      const ws1 = XLSX.utils.json_to_sheet(rows);
+      ws1["!cols"] = [
+        { wch: 4 }, { wch: 28 }, { wch: 18 }, { wch: 14 },
+        { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 22 },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws1, "All Winners");
+
+      // Sheet 2 — Member Summary
+      const ws2 = XLSX.utils.json_to_sheet(summary);
+      ws2["!cols"] = [{ wch: 4 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 10 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "Member Summary");
+
+      // Sheet 3 — Unclaimed only (for follow-up)
+      const unclaimed = rows.filter(r => r["Status"] === "Unclaimed");
+      if (unclaimed.length > 0) {
+        const ws3 = XLSX.utils.json_to_sheet(unclaimed);
+        ws3["!cols"] = ws1["!cols"];
+        XLSX.utils.book_append_sheet(wb, ws3, "Unclaimed Items");
+      }
+
+      const date = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "2-digit", day: "2-digit" }).replace(/\//g, "-");
+      XLSX.writeFile(wb, `Rampage_Auction_Winners_${date}.xlsx`);
+    }).catch(() => alert("Export failed — please check your internet connection."));
+  };
+
   if (loading) return <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>Loading winners…</div>;
 
   return (
     <div>
       <SectionHeader icon="🥇" title="Auction Winners" sub="History log · claimed & unclaimed items" actions={[
-        <button key="refresh" onClick={loadWinners} style={{ ...btn("gray"), fontSize: "12px", padding: "6px 12px" }}>🔄 Refresh</button>
+        <button key="export" onClick={exportToExcel} style={{ ...btn("green"), fontSize: "12px", padding: "6px 14px" }}>📥 Export Excel</button>,
+        <button key="refresh" onClick={loadWinners} style={{ ...btn("gray"), fontSize: "12px", padding: "6px 12px" }}>🔄 Refresh</button>,
       ]} />
 
       {loadError && (
