@@ -907,6 +907,13 @@ function AttendanceTab({ role, currentUser }) {
     if (data) setSelectedSession(data.id);
   };
 
+const deleteSession = async (sessionId) => {
+  if (!window.confirm("Delete this session permanently?")) return;
+  await supabase.from("attendance_records").delete().eq("session_id", sessionId);
+  await supabase.from("attendance_sessions").delete().eq("id", sessionId);
+  setSessions(prev => prev.filter(s => s.id !== sessionId));
+  if (selectedSession === sessionId) setSelectedSession(null);
+};
   const closeSession = async (sessionId) => {
     if (!window.confirm("Close this attendance session?")) return;
     await supabase.from("attendance_sessions").update({ is_active: false, ended_at: new Date().toISOString() }).eq("id", sessionId);
@@ -992,7 +999,10 @@ function AttendanceTab({ role, currentUser }) {
             {sessions.map(s => (
               <button key={s.id} onClick={() => setSelectedSession(s.id)} style={{ padding: "6px 14px", borderRadius: "8px", border: `1px solid ${selectedSession === s.id ? T.blue : T.border}`, cursor: "pointer", background: selectedSession === s.id ? "#1a2f5c" : T.bg3, color: selectedSession === s.id ? T.blueHi : T.textSub, fontSize: "12px", fontWeight: selectedSession === s.id ? "700" : "400", display: "flex", alignItems: "center", gap: "6px" }}>
                 {s.is_active && <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: T.greenHi }}></span>}
-                {s.name}
+{s.name}
+{can(role, "markAttendance") && (
+  <span onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} style={{ color: "#f87171", marginLeft: "6px", cursor: "pointer", fontSize: "10px" }}>✕</span>
+)}
               </button>
             ))}
           </div>
