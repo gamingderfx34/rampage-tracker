@@ -5,17 +5,18 @@ import { supabase } from "./supabase";
 // ROLE PERMISSIONS
 // ============================================================
 const CAN = {
-  editMembers:    ["admin", "leader"],
-  deleteMembers:  ["admin", "leader"],
-  killBoss:       ["admin", "leader", "elder"],
-  editBoss:       ["admin", "leader", "elder"],          // only admin/leader/elder can edit boss
-  uploadImage:    ["admin", "leader", "elder"],          // image upload gated to these roles
-  addAuction:     ["admin", "leader", "elder"],          // elder can now add auction items
-  editAuction:    ["admin", "leader", "elder"],          // elder can edit auction
-  placeBid:       ["admin", "leader", "elder", "member"],
-  manageUsers:    ["admin"],
+  editMembers:   ["admin", "leader", "elder"],
+  deleteMembers: ["admin", "leader"],
+  killBoss:      ["admin", "leader", "elder"],
+  editBoss:      ["admin", "leader", "elder"],
+  uploadImage:   ["admin", "leader", "elder"],
+  addAuction:    ["admin", "leader", "elder"],
+  editAuction:   ["admin", "leader", "elder"],
+  placeBid:      ["admin", "leader", "elder", "member"],
+  manageUsers:   ["admin"],
   markAttendance: ["admin", "leader"],
-manageWinners: ["admin", "leader", "elder"],
+  manageWinners: ["admin", "leader", "elder"],
+  addPoints:     ["admin", "leader", "elder"],
 };
 const can = (role, action) => CAN[action]?.includes(role);
 
@@ -630,7 +631,7 @@ const addPoints = async (member, amount) => {
                   <td style={{ padding: "10px 10px", color: T.goldHi }}>x{(m.multiplier || 1).toFixed(2)}</td>
                   <td style={{ padding: "10px 10px", color: T.text, fontWeight: "700" }}>
                     {m.points || 0}
-                    {can(role, "editMembers") && (
+                    {can(role, "addPoints") && (
                       <button onClick={() => resetPoints(m)} style={{ background: "none", border: "none", color: T.redHi, cursor: "pointer", fontSize: "11px", marginLeft: "6px" }} title="Reset points">↺</button>
                     )}
 					<button onClick={() => { const v = prompt("Add or remove points (e.g. 50 or -50):"); if (v !== null) addPoints(m, parseInt(v) || 0); }} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: "11px", marginLeft: "4px" }} title="Add/Remove points">✎</button>
