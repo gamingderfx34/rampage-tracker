@@ -565,6 +565,7 @@ function MembersTab({ role }) {
   const [uploadingClassImg, setUploadingClassImg] = useState(false);
   const [classImgUploadFor, setClassImgUploadFor] = useState(""); // which class currently uploading
   const classImgRef = useRef(null);
+  const xlsxImportRef = useRef(null);
 
   const loadMembers = async () => {
     const { data: membersData, error } = await supabase.from("members").select("*").order("growthPower", { ascending: false });
@@ -653,13 +654,10 @@ const addPoints = async (member, amount) => {
     if (!form.name) return;
     const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment };
     if (editMember) {
-      // If the member has a real numeric id from the members table, update by id.
-      // Otherwise (loaded from users fallback, id is a UUID string), upsert by name.
       const isRealMembersId = editMember.id && typeof editMember.id === "number";
       if (isRealMembersId) {
         await supabase.from("members").update(payload).eq("id", editMember.id);
       } else {
-        // Try update first; if no rows affected, insert
         const { data: updated } = await supabase.from("members").update(payload).eq("name", form.name).select();
         if (!updated || updated.length === 0) {
           await supabase.from("members").insert([{ ...payload, points: editMember.points || 0 }]);
@@ -688,14 +686,58 @@ const addPoints = async (member, amount) => {
     return typeof av === "number" ? (av - bv) * v : String(av ?? "").localeCompare(String(bv ?? "")) * v;
   });
 
+  const parseAndImportRows = async (rows) => {
+    if (!rows.length) return;
+    const VALID_CLASSES   = ["Berserker","Skald","Warlord","Volva","Archer","RuneFighter"];
+    const VALID_POSITIONS = ["Leader","Elder","Member","Rookie"];
+    const cleaned = rows.map(r => ({
+      name:        (r.name || r.Name || r.CHARACTER_NAME || "Unknown").toString().trim(),
+      class:       VALID_CLASSES.includes((r.class || r.Class || r.CLASS || "").toString().trim()) ? (r.class || r.Class || r.CLASS).toString().trim() : "Archer",
+      position:    VALID_POSITIONS.includes((r.position || r.Position || r.POSITION || "").toString().trim()) ? (r.position || r.Position || r.POSITION).toString().trim() : "Member",
+      growthPower: parseFloat(r.growthPower || r["Growth Power"] || r.GROWTH_POWER || r.growth_power || 0) || 0,
+      multiplier:  parseFloat(r.multiplier  || r.Multiplier   || r.MULTIPLIER   || 1) || 1,
+      points:      parseFloat(r.points      || r.Points       || r.POINTS       || 0) || 0,
+      activity:    ["Active","Inactive"].includes((r.activity || r.Activity || r.ACTIVITY || "Active").toString().trim()) ? (r.activity || r.Activity || r.ACTIVITY || "Active").toString().trim() : "Active",
+      comment:     (r.comment || r.Comment  || r.COMMENT      || "").toString().trim(),
+    })).filter(r => r.name && r.name !== "Unknown" || r.name === "Unknown" && rows.length === 1);
+    await supabase.from("members").insert(cleaned);
+    setImportText(""); setShowImport(false);
+    loadMembers();
+  };
+
   const handleImport = async () => {
     const lines = importText.trim().split("\n").filter(Boolean);
-    const rows = lines.map(line => {
+    if (!lines.length) return;
+    const headers = lines[0].split(/\t|,/).map(h => h.trim().toLowerCase());
+    const isHeaderRow = headers.some(h => ["name","class","position","growth power","growthpower"].includes(h));
+    const dataLines = isHeaderRow ? lines.slice(1) : lines;
+    const rows = dataLines.filter(Boolean).map(line => {
       const c = line.split(/\t|,/);
+      if (isHeaderRow) {
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = c[i]?.trim() || ""; });
+        return { name: obj.name || "Unknown", class: obj.class || "Archer", position: obj.position || "Member", growthPower: parseFloat(obj["growth power"] || obj.growthpower || 0) || 0, multiplier: parseFloat(obj.multiplier || 1) || 1, points: parseFloat(obj.points || 0) || 0, activity: obj.activity || "Active", comment: obj.comment || "" };
+      }
       return { name: c[0]?.trim() || "Unknown", class: c[1]?.trim() || "Archer", position: c[2]?.trim() || "Member", growthPower: parseFloat(c[3]) || 0, multiplier: parseFloat(c[4]) || 1, points: parseFloat(c[5]) || 0, activity: c[6]?.trim() || "Active", comment: c[7]?.trim() || "" };
     });
-    await supabase.from("members").insert(rows);
-    setImportText(""); setShowImport(false);
+    await parseAndImportRows(rows);
+  };
+
+  const handleXlsxImport = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+        const wb   = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        await parseAndImportRows(rows);
+      } catch (err) {
+        alert("Failed to read Excel file: " + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   const exportCSV = () => {
@@ -820,11 +862,25 @@ const addPoints = async (member, amount) => {
       {showImport && (
         <Modal onClose={() => setShowImport(false)}>
           <h2 style={{ color: T.text, marginTop: 0 }}>📥 Import Members</h2>
-          <p style={{ color: T.textSub, fontSize: "13px" }}>Paste CSV or tab-separated rows:<br /><code style={{ color: T.blueHi }}>Name, Class, Position, GrowthPower, Multiplier, Points, Activity, Comment</code></p>
-          <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={8} style={{ ...inputStyle, fontFamily: "monospace", fontSize: "12px", resize: "vertical" }} />
+
+          {/* XLSX upload */}
+          <div style={{ background: T.bg3, border: `2px dashed ${T.borderHi}`, borderRadius: "10px", padding: "18px", textAlign: "center", marginBottom: "16px" }}>
+            <div style={{ color: T.textSub, fontSize: "13px", marginBottom: "10px" }}>📊 Upload Excel file (.xlsx)</div>
+            <input ref={xlsxImportRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleXlsxImport(f); e.target.value = ""; }} />
+            <button onClick={() => xlsxImportRef.current?.click()} style={btn("green")}>📂 Choose Excel File</button>
+            <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "8px" }}>
+              Columns: <span style={{ color: T.blueHi }}>Name · Class · Position · Growth Power · Multiplier · Points · Activity · Comment</span>
+            </div>
+          </div>
+
+          <div style={{ color: T.textMuted, fontSize: "12px", textAlign: "center", marginBottom: "12px" }}>— or paste CSV / tab-separated text below —</div>
+          <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={6}
+            placeholder={"Name,Class,Position,GrowthPower,Multiplier,Points,Activity,Comment\nRampage,Berserker,Leader,250500,1,0,Active,"}
+            style={{ ...inputStyle, fontFamily: "monospace", fontSize: "12px", resize: "vertical" }} />
           <div style={{ display: "flex", gap: "8px", marginTop: "12px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowImport(false)} style={btn("gray")}>Cancel</button>
-            <button onClick={handleImport} style={btn("green")}>Import</button>
+            <button onClick={handleImport} style={btn("green")}>Import CSV</button>
           </div>
         </Modal>
       )}
