@@ -9,7 +9,7 @@ const CAN = {
   deleteMembers: ["admin", "creator", "leader"],
   killBoss:      ["admin", "creator", "leader", "elder", "member"],
   editBoss:      ["admin", "creator", "leader", "elder"],
-  uploadImage:   ["admin", "creator", "leader", "elder"],
+  uploadImage:   ["admin", "creator", "leader", "elder", "member"],
   addAuction:    ["admin", "creator", "leader", "elder"],
   editAuction:   ["admin", "creator", "leader", "elder"],
   placeBid:      ["admin", "creator", "leader", "elder", "member"],
@@ -902,9 +902,16 @@ function BossTimerTab({ role }) {
                       style={{ ...btn("blue"), width: "100%" }}>
                       {uploadingImg ? "⏳ Uploading…" : "📷 Upload Boss Image"}
                     </button>
+                    <input
+                      type="text"
+                      value={form.image_url}
+                      onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))}
+                      placeholder="Or paste image URL here"
+                      style={{ ...inputStyle, fontSize: "11px" }}
+                    />
                     {form.image_url
                       ? <button type="button" onClick={() => setForm(f => ({ ...f, image_url: "" }))} style={{ ...btn("red"), width: "100%", fontSize: "12px", padding: "6px" }}>✕ Remove Image (use 👹)</button>
-                      : <span style={{ color: T.textMuted, fontSize: "11px" }}>PNG / JPG / WebP — stored in Supabase "boss-images" bucket</span>
+                      : <span style={{ color: T.textMuted, fontSize: "11px" }}>Upload file or paste image URL above</span>
                     }
                   </div>
                 </div>
@@ -1181,7 +1188,7 @@ function AuctionTab({ role, currentUser }) {
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
-  // Auto-create winner when auction ends and has a valid bidder
+  // Auto-create winner when timer hits 0 and there is a valid bidder
   useEffect(() => {
     const checkEnded = async () => {
       const ended = auctions.filter(a =>
@@ -1197,13 +1204,14 @@ function AuctionTab({ role, currentUser }) {
           .eq("item_id", item.id)
           .maybeSingle();
         if (!existing) {
-          await supabase.from("auction_winners").insert([{
+          const { error } = await supabase.from("auction_winners").insert([{
             item_id:   item.id,
             item_name: item.name,
             bidder:    item.bidder,
             amount:    item.highestBid,
             claimed:   false,
           }]);
+          if (error) console.error("Auto-winner insert failed:", error.message);
         }
       }
     };
@@ -1282,18 +1290,33 @@ function AuctionTab({ role, currentUser }) {
     if (!declareForm.winnerName.trim()) return;
     const winnerName = declareForm.winnerName.trim();
     const winnerAmt  = +declareForm.amount || 0;
-    // Insert or update winner record
-    const { data: existing } = await supabase.from("auction_winners").select("id").eq("item_id", declareModal.id).maybeSingle();
+
+    // Upsert winner record (insert or update if already exists for this item)
+    const { data: existing } = await supabase
+      .from("auction_winners")
+      .select("id")
+      .eq("item_id", declareModal.id)
+      .maybeSingle();
+
     if (existing) {
-      await supabase.from("auction_winners").update({ bidder: winnerName, amount: winnerAmt }).eq("item_id", declareModal.id);
+      const { error: upErr } = await supabase
+        .from("auction_winners")
+        .update({ bidder: winnerName, amount: winnerAmt, claimed: false })
+        .eq("item_id", declareModal.id);
+      if (upErr) { alert("Failed to update winner: " + upErr.message); return; }
     } else {
-      await supabase.from("auction_winners").insert([{ item_id: declareModal.id, item_name: declareModal.name, bidder: winnerName, amount: winnerAmt, claimed: false }]);
+      const { error: insErr } = await supabase
+        .from("auction_winners")
+        .insert([{ item_id: declareModal.id, item_name: declareModal.name, bidder: winnerName, amount: winnerAmt, claimed: false }]);
+      if (insErr) { alert("Failed to insert winner: " + insErr.message); return; }
     }
-    // Also update the auction item card so the bidder name is visible there too
-    const bidPayload = declareModal.highestBid !== undefined
-      ? (typeof declareModal.highestBid !== "undefined" ? { highest_bid: winnerAmt, bidder: winnerName } : { highestBid: winnerAmt, bidder: winnerName })
-      : { bidder: winnerName };
-    await supabase.from("auction_items").update(bidPayload).eq("id", declareModal.id);
+
+    // Update auction card with correct column format
+    const itemPayload = colFormat.current === "camel"
+      ? { highestBid: winnerAmt, bidder: winnerName }
+      : { highest_bid: winnerAmt, bidder: winnerName };
+    await supabase.from("auction_items").update(itemPayload).eq("id", declareModal.id);
+
     setDeclareModal(null);
     loadAuctions();
   };
@@ -1601,7 +1624,7 @@ function WinnersTab({ role, currentUser }) {
       </div>
 
       {filtered.length === 0 && (
-        <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>No winner records yet. Winners are recorded when a bid is placed.</div>
+        <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>No winner records yet. Winners appear here when declared or when an auction ends.</div>
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1632,7 +1655,7 @@ function WinnersTab({ role, currentUser }) {
 
             {/* Actions */}
             <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-              {can(role, "manageWinners") && (
+              {(can(role, "manageWinners") || w.bidder === currentUser?.display) && (
                 <button onClick={() => toggleClaim(w)} style={{ ...btn(w.claimed ? "gray" : "green"), fontSize: "12px", padding: "6px 12px" }}>
                   {w.claimed ? "Unmark" : "Mark Claimed"}
                 </button>
