@@ -652,8 +652,22 @@ const addPoints = async (member, amount) => {
   const handleSave = async () => {
     if (!form.name) return;
     const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment };
-    if (editMember) await supabase.from("members").update(payload).eq("id", editMember.id);
-    else await supabase.from("members").insert([{ ...payload, points: 0 }]);
+    if (editMember) {
+      // If the member has a real numeric id from the members table, update by id.
+      // Otherwise (loaded from users fallback, id is a UUID string), upsert by name.
+      const isRealMembersId = editMember.id && typeof editMember.id === "number";
+      if (isRealMembersId) {
+        await supabase.from("members").update(payload).eq("id", editMember.id);
+      } else {
+        // Try update first; if no rows affected, insert
+        const { data: updated } = await supabase.from("members").update(payload).eq("name", form.name).select();
+        if (!updated || updated.length === 0) {
+          await supabase.from("members").insert([{ ...payload, points: editMember.points || 0 }]);
+        }
+      }
+    } else {
+      await supabase.from("members").insert([{ ...payload, points: 0 }]);
+    }
     setShowModal(false);
   };
 
