@@ -619,7 +619,7 @@ function MembersTab({ role }) {
     setUploadingClassImg(true);
     setClassImgUploadFor(className);
     const ext = file.name.split(".").pop();
-    const filename = \`class_\${className.toLowerCase()}_\${Date.now()}.\${ext}\`;
+    const filename = `class_${className.toLowerCase()}_${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("class-icons").upload(filename, file, { upsert: true, contentType: file.type });
     if (upErr) { alert("Upload failed: " + upErr.message); setUploadingClassImg(false); setClassImgUploadFor(""); return; }
     const { data: urlData } = supabase.storage.from("class-icons").getPublicUrl(filename);
