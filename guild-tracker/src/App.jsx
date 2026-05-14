@@ -616,6 +616,7 @@ function MembersTab({ role }) {
 
   const uploadClassImage = async (className, file) => {
     if (!file) return;
+    if (!className || className === "—") { alert("Please select a valid class first before uploading an icon."); return; }
     setUploadingClassImg(true);
     setClassImgUploadFor(className);
     const ext = file.name.split(".").pop();
@@ -646,7 +647,7 @@ const addPoints = async (member, amount) => {
   loadMembers();
 };
   const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" }); setShowModal(true); };
-  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: m.class, position: m.position, growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity, comment: m.comment || "" }); setShowModal(true); };
+  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: (m.class && m.class !== "—") ? m.class : "Archer", position: m.position || "Member", growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity || "Active", comment: m.comment || "" }); setShowModal(true); };
 
   const handleSave = async () => {
     if (!form.name) return;
