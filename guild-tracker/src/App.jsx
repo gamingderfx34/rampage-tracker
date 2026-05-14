@@ -8,9 +8,10 @@ const CAN = {
   editMembers:    ["admin", "leader"],
   deleteMembers:  ["admin", "leader"],
   killBoss:       ["admin", "leader", "elder"],
-  editBoss:       ["admin", "leader", "elder", "member"],
-  addAuction:     ["admin", "leader"],
-  editAuction:    ["admin", "leader", "elder"],   // elder can edit auction items
+  editBoss:       ["admin", "leader", "elder"],          // only admin/leader/elder can edit boss
+  uploadImage:    ["admin", "leader", "elder"],          // image upload gated to these roles
+  addAuction:     ["admin", "leader", "elder"],          // elder can now add auction items
+  editAuction:    ["admin", "leader", "elder"],          // elder can edit auction
   placeBid:       ["admin", "leader", "elder", "member"],
   manageUsers:    ["admin"],
   markAttendance: ["admin", "leader"],
@@ -22,7 +23,10 @@ const can = (role, action) => CAN[action]?.includes(role);
 // CONSTANTS
 // ============================================================
 const CLASSES   = ["Berserker", "Skald", "Warlord", "Volva", "Archer", "RuneFighter"];
-const POSITIONS = ["Leader", "Elder", "Member", "Recruit"];
+const POSITIONS = ["Leader", "Elder", "Member", "Rookie"];
+
+// Position sort order for members table
+const POSITION_ORDER = { Leader: 0, Elder: 1, Member: 2, Rookie: 3 };
 
 const BOSSES_DEFAULT = [
   { id: 1, name: "Lv. 66 Cruel Outlaw Gand - Kings Tomb 1F",         color: "#4a90d9", respawnMin: 30,  respawnMax: 60,  lastKilled: null, windowDuration: 30, channel: 1 },
@@ -102,7 +106,8 @@ const positionColors = {
   Leader:  { bg: "#3a2003", text: "#e8a93a", border: "#c9973a55" },
   Elder:   { bg: "#3a0a0a", text: "#e05555", border: "#c0404055" },
   Member:  { bg: T.bg3,     text: T.textSub,  border: T.border     },
-  Recruit: { bg: "#0d1f3a", text: "#5a9fd4", border: "#4a7fd455" },
+  Rookie:  { bg: "#1a0d3a", text: "#9b7fe8", border: "#6e3fad55"  },
+  Recruit: { bg: "#1a0d3a", text: "#9b7fe8", border: "#6e3fad55"  }, // legacy alias
 };
 const activityColors = {
   Active:   { bg: "#0a2718", text: "#3da866", dot: "#3da866" },
@@ -448,12 +453,28 @@ function MembersTab({ role }) {
   const loadMembers = async () => {
     const { data: membersData, error } = await supabase.from("members").select("*").order("growthPower", { ascending: false });
     if (!error && membersData) {
-      setMembers(membersData);
+      // Sort: Leader first, then Elder, Member, Rookie — never show raw admin entries
+      const sorted = membersData
+        .filter(m => m.position !== "admin")
+        .sort((a, b) => (POSITION_ORDER[a.position] ?? 99) - (POSITION_ORDER[b.position] ?? 99));
+      setMembers(sorted);
     } else {
-      const { data: usersData } = await supabase.from("users").select("id, display, role, points").neq("role", "pending").order("created_at", { ascending: true });
+      // Fallback: pull from users table, skip admin role entirely, map pending → Rookie
+      const { data: usersData } = await supabase
+        .from("users")
+        .select("id, display, role, points")
+        .neq("role", "admin")
+        .order("created_at", { ascending: true });
       if (usersData) {
-        const roleToPosition = { admin: "Leader", leader: "Leader", elder: "Elder", member: "Member" };
-        setMembers(usersData.map(u => ({ id: u.id, name: u.display, class: "—", position: roleToPosition[u.role] || "Member", growthPower: 0, multiplier: 1, points: u.points || 0, activity: "Active", comment: "" })));
+        const roleToPosition = { leader: "Leader", elder: "Elder", member: "Member", pending: "Rookie" };
+        const mapped = usersData.map(u => ({
+          id: u.id, name: u.display, class: "—",
+          position: roleToPosition[u.role] || "Member",
+          growthPower: 0, multiplier: 1,
+          points: u.points || 0, activity: u.role === "pending" ? "Inactive" : "Active", comment: "",
+        }));
+        mapped.sort((a, b) => (POSITION_ORDER[a.position] ?? 99) - (POSITION_ORDER[b.position] ?? 99));
+        setMembers(mapped);
       }
     }
     setLoading(false);
@@ -489,9 +510,15 @@ function MembersTab({ role }) {
 
   const handleSort = (col) => { if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortBy(col); setSortDir("desc"); } };
   const sorted = [...members].sort((a, b) => {
+    // Position order always takes primary precedence unless user explicitly sorted by position
+    if (sortBy !== "position") {
+      const posA = POSITION_ORDER[a.position] ?? 99;
+      const posB = POSITION_ORDER[b.position] ?? 99;
+      if (posA !== posB) return posA - posB;
+    }
     const v = sortDir === "asc" ? 1 : -1;
     const av = a[sortBy], bv = b[sortBy];
-    return typeof av === "number" ? (av - bv) * v : String(av).localeCompare(String(bv)) * v;
+    return typeof av === "number" ? (av - bv) * v : String(av ?? "").localeCompare(String(bv ?? "")) * v;
   });
 
   const handleImport = async () => {
@@ -601,21 +628,53 @@ function MembersTab({ role }) {
 }
 
 // ============================================================
-// BOSS TIMER TAB
+// BOSS TIMER TAB — Supabase-backed so all users see changes
 // ============================================================
-function BossTimerTab({ bosses, setBosses, role }) {
+// Requires Supabase table: bosses
+//   id (int8 pk), name (text), color (text), respawn_min (int4),
+//   respawn_max (int4), window_duration (int4), channel (int4),
+//   last_killed (int8 nullable), image_url (text nullable)
+function BossTimerTab({ role }) {
+  const [bosses, setBosses]       = useState([]);
+  const [loading, setLoading]     = useState(true);
   const [now, setNow]             = useState(Date.now());
   const [showModal, setShowModal] = useState(false);
   const [editBoss, setEditBoss]   = useState(null);
-  const [form, setForm]           = useState({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9", imageUrl: "" });
+  const [form, setForm]           = useState({ name: "", respawn_min: 30, respawn_max: 60, window_duration: 30, channel: 1, color: "#4a90d9", image_url: "" });
   const [channel, setChannel]     = useState(1);
   const [killModal, setKillModal] = useState(null);
   const [killOffset, setKillOffset] = useState(0);
-  const [uploadingBossImg, setUploadingBossImg] = useState(false);
-  const [bossSaveErr, setBossSaveErr] = useState("");
-  const bossImgRef = useRef(null);
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const [saveErr, setSaveErr]     = useState("");
+  const bossImgRef                = useRef(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+
+  const loadBosses = async () => {
+    const { data, error } = await supabase.from("bosses").select("*").order("channel").order("id");
+    if (!error && data) {
+      setBosses(data.map(b => ({
+        ...b,
+        respawnMin:     b.respawn_min     ?? b.respawnMin     ?? 30,
+        respawnMax:     b.respawn_max     ?? b.respawnMax     ?? 60,
+        windowDuration: b.window_duration ?? b.windowDuration ?? 30,
+        lastKilled:     b.last_killed     ?? b.lastKilled     ?? null,
+        imageUrl:       b.image_url       ?? b.imageUrl       ?? "",
+      })));
+    } else {
+      // Fallback to BOSSES_DEFAULT if table doesn't exist yet
+      setBosses(BOSSES_DEFAULT);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadBosses();
+    const ch = supabase.channel("bosses-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bosses" }, loadBosses)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
 
   const getBossState = (boss) => {
     if (!boss.lastKilled) return { state: "unknown", label: "No Data — waiting for first kill" };
@@ -631,28 +690,49 @@ function BossTimerTab({ bosses, setBosses, role }) {
   const stateDots   = { unknown: T.textMuted, waiting: T.blueHi, spawning: T.greenHi, overdue: T.redHi };
   const filtered    = bosses.filter(b => b.channel === channel);
 
-  const openAdd  = () => { setEditBoss(null); setBossSaveErr(""); setForm({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9", imageUrl: "" }); setShowModal(true); };
-  const openEdit = (b) => { setEditBoss(b); setBossSaveErr(""); setForm({ ...b, imageUrl: b.imageUrl || "" }); setShowModal(true); };
-  const handleSave = () => {
+  const openAdd  = () => { setSaveErr(""); setEditBoss(null); setForm({ name: "", respawn_min: 30, respawn_max: 60, window_duration: 30, channel, color: "#4a90d9", image_url: "" }); setShowModal(true); };
+  const openEdit = (b) => { setSaveErr(""); setEditBoss(b); setForm({ name: b.name, respawn_min: b.respawnMin, respawn_max: b.respawnMax, window_duration: b.windowDuration, channel: b.channel, color: b.color, image_url: b.imageUrl || "" }); setShowModal(true); };
+
+  const handleSave = async () => {
     if (!form.name) return;
-    if (editBoss) setBosses(bosses.map(b => b.id === editBoss.id ? { ...form, id: b.id, respawnMin: +form.respawnMin, respawnMax: +form.respawnMax, windowDuration: +form.windowDuration, channel: +form.channel, lastKilled: b.lastKilled, imageUrl: form.imageUrl || "" } : b));
-    else setBosses([...bosses, { ...form, id: Date.now(), respawnMin: +form.respawnMin, respawnMax: +form.respawnMax, windowDuration: +form.windowDuration, channel: +form.channel, lastKilled: null, imageUrl: form.imageUrl || "" }]);
+    const payload = {
+      name: form.name, color: form.color, channel: +form.channel,
+      respawn_min: +form.respawn_min, respawn_max: +form.respawn_max,
+      window_duration: +form.window_duration,
+      image_url: form.image_url || null,
+    };
+    let res;
+    if (editBoss) {
+      res = await supabase.from("bosses").update(payload).eq("id", editBoss.id).select();
+    } else {
+      res = await supabase.from("bosses").insert([{ ...payload, last_killed: null }]).select();
+    }
+    if (res.error) { setSaveErr("Save failed: " + res.error.message); return; }
     setShowModal(false);
+    loadBosses();
   };
-  const confirmKill = () => { setBosses(bosses.map(b => b.id === killModal.id ? { ...b, lastKilled: Date.now() - killOffset * 60000 } : b)); setKillModal(null); };
+
+  const confirmKill = async () => {
+    const killedAt = Date.now() - killOffset * 60000;
+    await supabase.from("bosses").update({ last_killed: killedAt }).eq("id", killModal.id);
+    setKillModal(null);
+    loadBosses();
+  };
 
   const uploadBossImage = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadingBossImg(true);
+    setUploadingImg(true);
     const ext = file.name.split(".").pop();
-    const filename = `boss_${Date.now()}.${ext}`;
+    const filename = `boss_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error: upErr } = await supabase.storage.from("boss-images").upload(filename, file, { upsert: true, contentType: file.type });
-    setUploadingBossImg(false);
-    if (upErr) { setBossSaveErr("Upload failed: " + upErr.message); return; }
+    setUploadingImg(false);
+    if (upErr) { setSaveErr("Upload failed: " + upErr.message); return; }
     const { data: urlData } = supabase.storage.from("boss-images").getPublicUrl(filename);
-    if (urlData?.publicUrl) setForm(f => ({ ...f, imageUrl: urlData.publicUrl }));
+    if (urlData?.publicUrl) setForm(f => ({ ...f, image_url: urlData.publicUrl }));
   };
+
+  if (loading) return <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>Loading bosses…</div>;
 
   return (
     <div>
@@ -668,9 +748,9 @@ function BossTimerTab({ bosses, setBosses, role }) {
           const { state, label } = getBossState(boss);
           return (
             <div key={boss.id} style={{ background: stateColors[state], border: `1px solid ${stateDots[state]}44`, borderRadius: "12px", padding: "16px 20px", display: "flex", alignItems: "center", gap: "16px" }}>
-              <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: boss.color + "22", border: `2px solid ${boss.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0, overflow: "hidden" }}>
+              <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: boss.color + "22", border: `2px solid ${boss.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0, overflow: "hidden" }}>
                 {boss.imageUrl
-                  ? <img src={boss.imageUrl} alt="boss" style={{ width: "52px", height: "52px", objectFit: "cover", borderRadius: "50%" }} />
+                  ? <img src={boss.imageUrl} alt="boss" style={{ width: "56px", height: "56px", objectFit: "cover", borderRadius: "50%" }} />
                   : "👹"
                 }
               </div>
@@ -692,9 +772,10 @@ function BossTimerTab({ bosses, setBosses, role }) {
             </div>
           );
         })}
-        {filtered.length === 0 && <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>No bosses for Channel {channel}.</div>}
+        {filtered.length === 0 && <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>No bosses for Channel {channel}.{can(role, "editBoss") ? ' Click "+ Add Boss" to add one.' : ""}</div>}
       </div>
 
+      {/* Kill Boss Modal */}
       {killModal && (
         <Modal onClose={() => setKillModal(null)}>
           <h2 style={{ color: T.text, marginTop: 0 }}>⚔️ Boss Killed: {killModal.name}</h2>
@@ -710,41 +791,60 @@ function BossTimerTab({ bosses, setBosses, role }) {
           </div>
         </Modal>
       )}
+
+      {/* Add / Edit Boss Modal */}
       {showModal && (
         <Modal onClose={() => setShowModal(false)}>
-          <h2 style={{ color: T.text, marginTop: 0 }}>{editBoss ? "Edit Boss" : "Add Boss"}</h2>
+          <h2 style={{ color: T.text, marginTop: 0 }}>{editBoss ? "✏️ Edit Boss" : "➕ Add Boss"}</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            {[["Boss Name", "name", "text"], ["Min Respawn (min)", "respawnMin", "number"], ["Max Respawn (min)", "respawnMax", "number"], ["Window Duration (min)", "windowDuration", "number"], ["Channel", "channel", "number"]].map(([label, key, type]) => (
-              <label key={key} style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>{label}</span><input type={type} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} style={inputStyle} /></label>
-            ))}
-            <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Boss Color (icon ring)</span><input type="color" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} style={{ ...inputStyle, height: "40px", cursor: "pointer" }} /></label>
-            {/* Boss image upload */}
             <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
-              <span style={{ color: T.textSub, fontSize: "12px" }}>Boss Image (78×78 px — replaces 👹 icon)</span>
-              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                <div style={{ width: "78px", height: "78px", borderRadius: "50%", border: `2px solid ${form.color}66`, background: form.color + "22", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-                  {form.imageUrl
-                    ? <img src={form.imageUrl} alt="boss preview" style={{ width: "78px", height: "78px", objectFit: "cover", borderRadius: "50%" }} />
-                    : <span style={{ fontSize: "28px" }}>👹</span>
-                  }
-                </div>
-                <div style={{ flex: 1 }}>
-                  <input ref={bossImgRef} type="file" accept="image/*" onChange={uploadBossImage} style={{ display: "none" }} />
-                  <button onClick={() => bossImgRef.current?.click()} disabled={uploadingBossImg} style={{ ...btn("blue"), width: "100%", marginBottom: "6px" }}>
-                    {uploadingBossImg ? "Uploading…" : "📷 Upload Boss Image"}
-                  </button>
-                  {form.imageUrl && (
-                    <button onClick={() => setForm(f => ({ ...f, imageUrl: "" }))} style={{ ...btn("red"), width: "100%", fontSize: "12px", padding: "5px" }}>✕ Remove Image</button>
-                  )}
-                  {!form.imageUrl && <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "4px" }}>PNG/JPG, ideally 78×78px. Stored in Supabase Storage "boss-images".</div>}
-                </div>
-              </div>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Boss Name</span>
+              <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} placeholder="e.g. Lv. 66 Cruel Outlaw Gand" />
             </label>
+            {[["Min Respawn (min)", "respawn_min"], ["Max Respawn (min)", "respawn_max"], ["Window Duration (min)", "window_duration"], ["Channel", "channel"]].map(([lbl, key]) => (
+              <label key={key} style={labelStyle}>
+                <span style={{ color: T.textSub, fontSize: "12px" }}>{lbl}</span>
+                <input type="number" value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} style={inputStyle} />
+              </label>
+            ))}
+            <label style={labelStyle}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Icon Ring Color</span>
+              <input type="color" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} style={{ ...inputStyle, height: "40px", cursor: "pointer", padding: "4px" }} />
+            </label>
+
+            {/* Boss Image Upload — only for admin/leader/elder */}
+            {can(role, "uploadImage") && (
+              <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
+                <span style={{ color: T.textSub, fontSize: "12px" }}>Boss Image (replaces 👹 icon — 78×78px recommended)</span>
+                <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "4px" }}>
+                  {/* Preview circle */}
+                  <div style={{ width: "78px", height: "78px", borderRadius: "50%", border: `2px solid ${form.color}88`, background: form.color + "22", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                    {form.image_url
+                      ? <img src={form.image_url} alt="preview" style={{ width: "78px", height: "78px", objectFit: "cover" }} />
+                      : <span style={{ fontSize: "28px" }}>👹</span>
+                    }
+                  </div>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <input ref={bossImgRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={uploadBossImage} style={{ display: "none" }} />
+                    <button type="button" onClick={() => bossImgRef.current?.click()} disabled={uploadingImg}
+                      style={{ ...btn("blue"), width: "100%" }}>
+                      {uploadingImg ? "⏳ Uploading…" : "📷 Upload Boss Image"}
+                    </button>
+                    {form.image_url
+                      ? <button type="button" onClick={() => setForm(f => ({ ...f, image_url: "" }))} style={{ ...btn("red"), width: "100%", fontSize: "12px", padding: "6px" }}>✕ Remove Image (use 👹)</button>
+                      : <span style={{ color: T.textMuted, fontSize: "11px" }}>PNG / JPG / WebP — stored in Supabase "boss-images" bucket</span>
+                    }
+                  </div>
+                </div>
+              </label>
+            )}
           </div>
-          {bossSaveErr && <div style={{ color: T.redHi, fontSize: "12px", marginTop: "8px" }}>{bossSaveErr}</div>}
+          {saveErr && <div style={{ background: "#3a121222", border: `1px solid ${T.red}44`, borderRadius: "6px", color: T.redHi, fontSize: "12px", padding: "8px 12px", marginTop: "10px" }}>{saveErr}</div>}
           <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowModal(false)} style={btn("gray")}>Cancel</button>
-            <button onClick={handleSave} disabled={uploadingBossImg} style={{ ...btn("blue"), opacity: uploadingBossImg ? 0.6 : 1 }}>Save</button>
+            <button onClick={handleSave} disabled={uploadingImg} style={{ ...btn("blue"), opacity: uploadingImg ? 0.6 : 1 }}>
+              {uploadingImg ? "Uploading…" : "Save Boss"}
+            </button>
           </div>
         </Modal>
       )}
@@ -1177,40 +1277,62 @@ function AuctionTab({ role, currentUser }) {
 
       {showModal && (
         <Modal onClose={() => setShowModal(false)}>
-          <h2 style={{ color: T.text, marginTop: 0 }}>{editItem ? "Edit Item" : "Add Auction Item"}</h2>
+          <h2 style={{ color: T.text, marginTop: 0 }}>{editItem ? "✏️ Edit Auction Item" : "➕ Add Auction Item"}</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            <label style={{ ...labelStyle, gridColumn: "1 / -1" }}><span style={{ color: T.textSub, fontSize: "12px" }}>Item Name</span><input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Type</span><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={inputStyle}>{["Equipment", "Material", "Consumable", "Currency"].map(t => <option key={t}>{t}</option>)}</select></label>
-            <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Hours Left</span><input type="number" value={form.hoursLeft} onChange={e => setForm({ ...form, hoursLeft: e.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Starting Bid (PTS)</span><input type="number" value={form.highestBid} onChange={e => setForm({ ...form, highestBid: e.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Starting Bidder</span><input type="text" value={form.bidder} onChange={e => setForm({ ...form, bidder: e.target.value })} style={inputStyle} /></label>
-            {/* Image upload */}
             <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
-              <span style={{ color: T.textSub, fontSize: "12px" }}>Item Image (78×78 px — replaces emoji)</span>
-              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                <div style={{ width: "78px", height: "78px", borderRadius: "8px", border: `1px dashed ${T.borderHi}`, background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-                  {form.imageUrl
-                    ? <img src={form.imageUrl} alt="preview" style={{ width: "78px", height: "78px", objectFit: "cover", borderRadius: "8px" }} />
-                    : <span style={{ fontSize: "32px" }}>{EMOJIS[form.type] || "⚔️"}</span>
-                  }
-                </div>
-                <div style={{ flex: 1 }}>
-                  <input ref={auctionImgRef} type="file" accept="image/*" onChange={handleAuctionImageUpload} style={{ display: "none" }} />
-                  <button onClick={() => auctionImgRef.current?.click()} disabled={uploadingImg} style={{ ...btn("blue"), width: "100%", marginBottom: "6px" }}>
-                    {uploadingImg ? "Uploading…" : "📷 Upload Image"}
-                  </button>
-                  {form.imageUrl && (
-                    <button onClick={() => setForm(f => ({ ...f, imageUrl: "" }))} style={{ ...btn("red"), width: "100%", fontSize: "12px", padding: "5px" }}>✕ Remove Image</button>
-                  )}
-                  {!form.imageUrl && <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "4px" }}>PNG/JPG, ideally 78×78px</div>}
-                </div>
-              </div>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Item Name</span>
+              <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} placeholder="e.g. Kari Helmet" />
             </label>
+            <label style={labelStyle}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Type</span>
+              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={inputStyle}>
+                {["Equipment", "Material", "Consumable", "Currency"].map(t => <option key={t}>{t}</option>)}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Duration (hours)</span>
+              <input type="number" min="0" step="0.5" value={form.hoursLeft} onChange={e => setForm({ ...form, hoursLeft: e.target.value })} style={inputStyle} />
+            </label>
+            <label style={labelStyle}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Starting / Min Bid (PTS)</span>
+              <input type="number" min="0" value={form.highestBid} onChange={e => setForm({ ...form, highestBid: e.target.value })} style={inputStyle} />
+            </label>
+            <label style={labelStyle}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Starting Bidder</span>
+              <input type="text" value={form.bidder} onChange={e => setForm({ ...form, bidder: e.target.value })} style={inputStyle} placeholder="-" />
+            </label>
+            {/* Image upload — admin/leader/elder only */}
+            {can(role, "uploadImage") && (
+              <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
+                <span style={{ color: T.textSub, fontSize: "12px" }}>Item Image (78×78 px recommended — replaces emoji)</span>
+                <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "4px" }}>
+                  <div style={{ width: "78px", height: "78px", borderRadius: "10px", border: `1px dashed ${T.borderHi}`, background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                    {form.imageUrl
+                      ? <img src={form.imageUrl} alt="preview" style={{ width: "78px", height: "78px", objectFit: "cover", borderRadius: "10px" }} />
+                      : <span style={{ fontSize: "36px" }}>{EMOJIS[form.type] || "⚔️"}</span>
+                    }
+                  </div>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <input ref={auctionImgRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleAuctionImageUpload} style={{ display: "none" }} />
+                    <button type="button" onClick={() => auctionImgRef.current?.click()} disabled={uploadingImg}
+                      style={{ ...btn("blue"), width: "100%" }}>
+                      {uploadingImg ? "⏳ Uploading…" : "📷 Upload Item Image"}
+                    </button>
+                    {form.imageUrl
+                      ? <button type="button" onClick={() => setForm(f => ({ ...f, imageUrl: "" }))} style={{ ...btn("red"), width: "100%", fontSize: "12px", padding: "6px" }}>✕ Remove Image (use emoji)</button>
+                      : <span style={{ color: T.textMuted, fontSize: "11px" }}>PNG / JPG / WebP — stored in Supabase "auction-images" bucket</span>
+                    }
+                  </div>
+                </div>
+              </label>
+            )}
           </div>
-          {saveError && <div style={{ color: T.redHi, fontSize: "12px", marginTop: "8px" }}>{saveError}</div>}
+          {saveError && <div style={{ background: "#3a121222", border: `1px solid ${T.red}44`, borderRadius: "6px", color: T.redHi, fontSize: "12px", padding: "8px 12px", marginTop: "10px" }}>{saveError}</div>}
           <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowModal(false)} style={btn("gray")}>Cancel</button>
-            <button onClick={handleSave} disabled={uploadingImg} style={{ ...btn("gold"), opacity: uploadingImg ? 0.6 : 1 }}>Save</button>
+            <button onClick={handleSave} disabled={uploadingImg} style={{ ...btn("gold"), opacity: uploadingImg ? 0.6 : 1 }}>
+              {uploadingImg ? "Uploading…" : "Save Item"}
+            </button>
           </div>
         </Modal>
       )}
@@ -1404,8 +1526,7 @@ export default function GuildTracker() {
   const [currentUser, setCurrentUser] = useState(() => {
     try { const saved = localStorage.getItem("guild_user"); return saved ? JSON.parse(saved) : null; } catch { return null; }
   });
-  const [tab, setTab]     = useState("members");
-  const [bosses, setBosses] = useState(BOSSES_DEFAULT);
+  const [tab, setTab] = useState("members");
 
   useEffect(() => {
     if (!currentUser) return;
@@ -1476,7 +1597,7 @@ export default function GuildTracker() {
       <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "28px 24px" }}>
         {tab === "members"    && <MembersTab role={role} />}
         {tab === "attendance" && <AttendanceTab role={role} currentUser={currentUser} />}
-        {tab === "bosses"     && <BossTimerTab bosses={bosses} setBosses={setBosses} role={role} />}
+        {tab === "bosses"     && <BossTimerTab role={role} />}
         {tab === "auction"    && <AuctionTab role={role} currentUser={currentUser} />}
         {tab === "winners"    && <WinnersTab role={role} currentUser={currentUser} />}
         {tab === "users"      && can(role, "manageUsers") && <UsersTab currentUser={currentUser} />}
