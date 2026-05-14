@@ -1158,7 +1158,7 @@ function AuctionTab({ role, currentUser }) {
   const [filter, setFilter]       = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem]   = useState(null);
-  const [form, setForm]           = useState({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48, imageUrl: "" });
+  const [form, setForm]           = useState({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48, durationUnit: "hours", imageUrl: "" });
   const [bidModal, setBidModal]   = useState(null);
   const [bidForm, setBidForm]     = useState({ amount: "", bidder: "" });
   const [saveError, setSaveError] = useState("");
@@ -1169,7 +1169,7 @@ function AuctionTab({ role, currentUser }) {
   const colFormat = useRef(null);
   const auctionImgRef = useRef(null);
 
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
   // Auto-create winner when auction ends and has a valid bidder
   const processedWinners = useRef(new Set());
@@ -1244,13 +1244,14 @@ function AuctionTab({ role, currentUser }) {
   const types  = ["All", "Equipment", "Material", "Consumable", "Currency"];
   const filtered = auctions.filter(a => filter === "All" || a.type === filter);
 
-  const openAdd  = () => { setSaveError(""); setEditItem(null); setForm({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48, imageUrl: "" }); setShowModal(true); };
-  const openEdit = (a) => { setSaveError(""); setEditItem(a); setForm({ ...a, hoursLeft: Math.max(0, Math.round((a.endsAt - Date.now()) / 3600000)), imageUrl: a.imageUrl || "" }); setShowModal(true); };
+  const openAdd  = () => { setSaveError(""); setEditItem(null); setForm({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48, durationUnit: "hours", imageUrl: "" }); setShowModal(true); };
+  const openEdit = (a) => { setSaveError(""); setEditItem(a); setForm({ ...a, hoursLeft: Math.max(0, Math.round((a.endsAt - Date.now()) / 3600000)), durationUnit: "hours", imageUrl: a.imageUrl || "" }); setShowModal(true); };
 
   const handleSave = async () => {
     if (!form.name) return;
     setSaveError("");
-    const endsAt  = new Date(Date.now() + +form.hoursLeft * 3600000).toISOString();
+    const unitMs = form.durationUnit === "seconds" ? 1000 : form.durationUnit === "minutes" ? 60000 : 3600000;
+    const endsAt  = new Date(Date.now() + +form.hoursLeft * unitMs).toISOString();
     const payload = buildPayload({ name: form.name, type: form.type, emoji: EMOJIS[form.type] || "⚔️", imageUrl: form.imageUrl || "", highestBid: +form.highestBid, bidder: form.bidder || "-", endsAt });
     let result;
     if (editItem) result = await supabase.from("auction_items").update(payload).eq("id", editItem.id).select();
@@ -1404,8 +1405,15 @@ function AuctionTab({ role, currentUser }) {
               </select>
             </label>
             <label style={labelStyle}>
-              <span style={{ color: T.textSub, fontSize: "12px" }}>Duration (hours)</span>
-              <input type="number" min="0" step="0.5" value={form.hoursLeft} onChange={e => setForm({ ...form, hoursLeft: e.target.value })} style={inputStyle} />
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Duration</span>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <input type="number" min="0" step="1" value={form.hoursLeft} onChange={e => setForm({ ...form, hoursLeft: e.target.value })} style={{ ...inputStyle, flex: 1 }} placeholder="e.g. 48" />
+                <select value={form.durationUnit} onChange={e => setForm({ ...form, durationUnit: e.target.value })} style={{ ...inputStyle, width: "110px", flex: "none" }}>
+                  <option value="seconds">Seconds</option>
+                  <option value="minutes">Minutes</option>
+                  <option value="hours">Hours</option>
+                </select>
+              </div>
             </label>
             <label style={labelStyle}>
               <span style={{ color: T.textSub, fontSize: "12px" }}>Starting / Min Bid (PTS)</span>
