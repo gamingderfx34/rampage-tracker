@@ -194,29 +194,120 @@ function StatBadge({ label, value, color }) {
 // ============================================================
 // LOGIN PAGE
 // ============================================================
+// ── CAPTCHA challenge pool ────────────────────────────────────
+const CAPTCHA_CHALLENGES = [
+  { prompt: "Select all SHIELDS", target: "shield", tiles: ["🛡️","🛡️","⚔️","🏹","🛡️","🧪","⚔️","🛡️","🏹"] },
+  { prompt: "Select all SWORDS",  target: "sword",  tiles: ["⚔️","🛡️","⚔️","🧪","⚔️","🏹","🛡️","⚔️","💎"] },
+  { prompt: "Select all POTIONS", target: "potion", tiles: ["🧪","⚔️","🧪","🛡️","🧪","💎","🏹","🧪","⚔️"] },
+  { prompt: "Select all BOWS",    target: "bow",    tiles: ["🏹","🛡️","🏹","⚔️","🏹","🧪","🏹","💎","⚔️"] },
+  { prompt: "Select all GEMS",    target: "gem",    tiles: ["💎","⚔️","💎","🏹","🛡️","💎","🧪","💎","⚔️"] },
+];
+const TARGET_EMOJI = { shield:"🛡️", sword:"⚔️", potion:"🧪", bow:"🏹", gem:"💎" };
+
+function CaptchaWidget({ onVerified }) {
+  const [challenge, setChallenge] = useState(() => {
+    const c = CAPTCHA_CHALLENGES[Math.floor(Math.random() * CAPTCHA_CHALLENGES.length)];
+    return { ...c, tiles: [...c.tiles].sort(() => Math.random() - 0.5) };
+  });
+  const [selected, setSelected]   = useState(new Set());
+  const [status, setStatus]       = useState("idle"); // idle | wrong | verified
+  const [shake, setShake]         = useState(false);
+
+  const toggle = (i) => {
+    if (status === "verified") return;
+    setStatus("idle");
+    setSelected(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
+  };
+
+  const verify = () => {
+    const correct = challenge.tiles
+      .map((t, i) => t === TARGET_EMOJI[challenge.target] ? i : -1)
+      .filter(i => i !== -1);
+    const sel = [...selected];
+    const ok = correct.length === sel.length && correct.every(i => selected.has(i));
+    if (ok) { setStatus("verified"); setTimeout(() => onVerified(), 600); }
+    else {
+      setStatus("wrong"); setShake(true);
+      setTimeout(() => {
+        setShake(false);
+        const c = CAPTCHA_CHALLENGES[Math.floor(Math.random() * CAPTCHA_CHALLENGES.length)];
+        setChallenge({ ...c, tiles: [...c.tiles].sort(() => Math.random() - 0.5) });
+        setSelected(new Set()); setStatus("idle");
+      }, 900);
+    }
+  };
+
+  const refresh = () => {
+    const c = CAPTCHA_CHALLENGES[Math.floor(Math.random() * CAPTCHA_CHALLENGES.length)];
+    setChallenge({ ...c, tiles: [...c.tiles].sort(() => Math.random() - 0.5) });
+    setSelected(new Set()); setStatus("idle");
+  };
+
+  return (
+    <div style={{ border: `1px solid ${status === "verified" ? T.green+"88" : status === "wrong" ? T.red+"88" : T.border}`, borderRadius: "10px", overflow: "hidden", transition: "border-color 0.3s", animation: shake ? "captchaShake 0.4s ease" : "none" }}>
+      <style>{`@keyframes captchaShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }`}</style>
+      {/* Header */}
+      <div style={{ background: T.bg3, borderBottom: `1px solid ${T.border}`, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ color: T.textSub, fontSize: "12px", fontWeight: "700", letterSpacing: "0.04em" }}>🤖 HUMAN VERIFICATION</span>
+        <button onClick={refresh} title="New challenge" style={{ background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: "15px", lineHeight: 1, padding: "2px 4px" }}>🔄</button>
+      </div>
+      {/* Prompt */}
+      <div style={{ padding: "10px 12px 6px", background: T.bg0 }}>
+        <div style={{ color: T.text, fontSize: "13px", fontWeight: "600" }}>{challenge.prompt}</div>
+        <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "2px" }}>Click all matching tiles then press Verify</div>
+      </div>
+      {/* Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "3px", padding: "6px 10px", background: T.bg0 }}>
+        {challenge.tiles.map((emoji, i) => {
+          const isSel = selected.has(i);
+          return (
+            <button key={i} onClick={() => toggle(i)} style={{ background: isSel ? (status === "wrong" ? "#3a1212" : "#0d2e1e") : T.bg3, border: `2px solid ${isSel ? (status === "wrong" ? T.red : T.green) : T.border}`, borderRadius: "8px", padding: "12px 0", fontSize: "26px", cursor: "pointer", transition: "all 0.15s", transform: isSel ? "scale(0.94)" : "scale(1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {emoji}
+            </button>
+          );
+        })}
+      </div>
+      {/* Footer */}
+      <div style={{ padding: "8px 10px", background: T.bg0, borderTop: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: "12px", color: status === "verified" ? T.greenHi : status === "wrong" ? T.redHi : T.textMuted, fontWeight: "600" }}>
+          {status === "verified" ? "✅ Verified!" : status === "wrong" ? "❌ Wrong — try again" : `${selected.size} selected`}
+        </span>
+        {status !== "verified" && (
+          <button onClick={verify} disabled={selected.size === 0} style={{ ...btn("blue"), fontSize: "12px", padding: "5px 14px", opacity: selected.size === 0 ? 0.4 : 1 }}>Verify</button>
+        )}
+        {status === "verified" && <span style={{ fontSize: "18px" }}>🎉</span>}
+      </div>
+    </div>
+  );
+}
+
 function LoginPage({ onLogin }) {
   const [username, setUsername]           = useState("");
   const [password, setPassword]           = useState("");
   const [error, setError]                 = useState("");
   const [showPass, setShowPass]           = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
- const [regForm, setRegForm] = useState({ display: "", username: "", password: "", account_id: "" });
+  const [regForm, setRegForm] = useState({ display: "", username: "", password: "" });
   const [regError, setRegError]           = useState("");
   const [regSuccess, setRegSuccess]       = useState(false);
+  const [captchaPassed, setCaptchaPassed] = useState(false);
+  const [registering, setRegistering]     = useState(false);
 
   const handleRegister = async () => {
-    if (!regForm.username || !regForm.password || !regForm.display) { setRegError("Please fill in all fields."); return; }if (!regForm.username || !regForm.password || !regForm.display || !regForm.account_id) { setRegError("Please fill in all fields."); return; }
-const { data: whitelist } = await supabase.from("clan_whitelist").select("*").eq("account_id", regForm.account_id.trim()).maybeSingle();
-if (!whitelist) { setRegError("❌ Your Account ID is not on the clan whitelist. Contact your admin."); return; }const { data: existing } = await supabase.from("users").select("id").eq("username", regForm.username.toLowerCase().trim()).maybeSingle();
-    if (existing) { setRegError("Username already taken."); return; }
+    if (!regForm.username || !regForm.password || !regForm.display) { setRegError("Please fill in all fields."); return; }
+    if (!captchaPassed) { setRegError("Please complete the human verification."); return; }
+    setRegistering(true);
+    setRegError("");
+    const { data: existing } = await supabase.from("users").select("id").eq("username", regForm.username.toLowerCase().trim()).maybeSingle();
+    if (existing) { setRegError("Username already taken."); setRegistering(false); return; }
     const { error: insertErr } = await supabase.from("users").insert([{
-  username: regForm.username.toLowerCase().trim(),
-  password: regForm.password,
-  display: regForm.display.trim(),
-  role:     "member",
-  is_approved: true,
-}]);
-    if (insertErr) setRegError("Registration failed. Try again.");
+      username: regForm.username.toLowerCase().trim(),
+      password: regForm.password,
+      display:  regForm.display.trim(),
+      role:     "member",
+    }]);
+    setRegistering(false);
+    if (insertErr) setRegError("Registration failed: " + insertErr.message);
     else { setRegSuccess(true); setIsRegistering(false); }
   };
 
@@ -243,7 +334,7 @@ if (!whitelist) { setRegError("❌ Your Account ID is not on the clan whitelist.
 
         {regSuccess && (
           <div style={{ background: T.greenGlow, border: `1px solid ${T.green}55`, borderRadius: "8px", color: T.greenHi, fontSize: "13px", padding: "10px 14px", marginBottom: "16px", textAlign: "center" }}>
-            ✅ Account created! Waiting for admin approval.
+            ✅ Account created! You can now log in.
           </div>
         )}
 
@@ -262,19 +353,22 @@ if (!whitelist) { setRegError("❌ Your Account ID is not on the clan whitelist.
             </label>
             {error && <div style={{ color: error.startsWith("⏳") ? T.goldHi : T.redHi, fontSize: "13px", textAlign: "center" }}>{error}</div>}
             <button onClick={handleLogin} style={{ ...btn("blue"), width: "100%", padding: "12px", fontSize: "15px" }}>Login</button>
-            <button onClick={() => { setIsRegistering(true); setError(""); setRegSuccess(false); }} style={{ background: "none", border: "none", color: T.textMuted, fontSize: "13px", cursor: "pointer" }}>Register new account</button>
+            <button onClick={() => { setIsRegistering(true); setError(""); setRegSuccess(false); setCaptchaPassed(false); }} style={{ background: "none", border: "none", color: T.textMuted, fontSize: "13px", cursor: "pointer" }}>Register new account</button>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <input placeholder="Display Name (character name)" value={regForm.display} onChange={e => setRegForm({ ...regForm, display: e.target.value })} style={inputStyle} autoFocus />
             <input placeholder="Username (for login)" value={regForm.username} onChange={e => setRegForm({ ...regForm, username: e.target.value })} style={inputStyle} />
             <input type="password" placeholder="Password" value={regForm.password} onChange={e => setRegForm({ ...regForm, password: e.target.value })} style={inputStyle} />
+            {!captchaPassed
+              ? <CaptchaWidget onVerified={() => setCaptchaPassed(true)} />
+              : <div style={{ background: T.greenGlow, border: `1px solid ${T.green}66`, borderRadius: "10px", padding: "10px 14px", color: T.greenHi, fontSize: "13px", fontWeight: "600", textAlign: "center" }}>✅ Human verification passed!</div>
+            }
             {regError && <div style={{ color: T.redHi, fontSize: "13px" }}>{regError}</div>}
-            <div style={{ background: T.goldGlow, border: `1px solid ${T.gold}44`, borderRadius: "8px", color: T.gold, fontSize: "12px", padding: "10px 14px" }}>
-              ⚠️ Account requires <strong>admin approval</strong> before logging in.
-            </div>
-            <button onClick={handleRegister} style={{ ...btn("blue"), width: "100%", padding: "12px", fontSize: "15px" }}>Register</button>
-            <button onClick={() => { setIsRegistering(false); setRegError(""); }} style={{ background: "none", border: "none", color: T.textMuted, fontSize: "13px", cursor: "pointer" }}>← Back to Login</button>
+            <button onClick={handleRegister} disabled={registering || !captchaPassed} style={{ ...btn("blue"), width: "100%", padding: "12px", fontSize: "15px", opacity: (!captchaPassed || registering) ? 0.45 : 1, cursor: (!captchaPassed || registering) ? "not-allowed" : "pointer" }}>
+              {registering ? "Creating account…" : "Register"}
+            </button>
+            <button onClick={() => { setIsRegistering(false); setRegError(""); setCaptchaPassed(false); }} style={{ background: "none", border: "none", color: T.textMuted, fontSize: "13px", cursor: "pointer" }}>← Back to Login</button>
           </div>
         )}
 
@@ -436,63 +530,10 @@ function UsersTab({ currentUser }) {
           </div>
         </Modal>
       )}
-   <WhitelistManager />
    </div>
   );
 }
 
-// ============================================================
-// MEMBERS TAB
-function WhitelistManager() {
-  const [whitelist, setWhitelist] = useState([]);
-  const [newId, setNewId] = useState("");
-  const [newName, setNewName] = useState("");
-
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.from("clan_whitelist").select("*").order("created_at", { ascending: false });
-      if (data) setWhitelist(data);
-    };
-    load();
-  }, []);
-
-  const addToWhitelist = async () => {
-    if (!newId.trim()) return;
-    await supabase.from("clan_whitelist").insert([{ account_id: newId.trim(), display_name: newName.trim(), approved_by: "admin" }]);
-    setNewId(""); setNewName("");
-    const { data } = await supabase.from("clan_whitelist").select("*").order("created_at", { ascending: false });
-    if (data) setWhitelist(data);
-  };
-
-  const removeFromWhitelist = async (id) => {
-    if (!window.confirm("Remove from whitelist?")) return;
-    await supabase.from("clan_whitelist").delete().eq("id", id);
-    setWhitelist(prev => prev.filter(w => w.id !== id));
-  };
-
-  return (
-    <div style={{ marginTop: "32px", background: "#1a1f2e", border: "1px solid #374151", borderRadius: "12px", padding: "20px" }}>
-      <div style={{ color: "#f3f4f6", fontWeight: "700", fontSize: "14px", marginBottom: "16px" }}>🛡️ Clan Whitelist ({whitelist.length})</div>
-      <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
-        <input placeholder="Account ID" value={newId} onChange={e => setNewId(e.target.value)} style={{ flex: 2, padding: "8px 10px", background: "#0f1320", border: "1px solid #374151", borderRadius: "6px", color: "#f3f4f6", fontSize: "13px" }} />
-        <input placeholder="Display Name (optional)" value={newName} onChange={e => setNewName(e.target.value)} style={{ flex: 2, padding: "8px 10px", background: "#0f1320", border: "1px solid #374151", borderRadius: "6px", color: "#f3f4f6", fontSize: "13px" }} />
-        <button onClick={addToWhitelist} style={{ padding: "8px 16px", background: "#1e3a8a", border: "none", borderRadius: "6px", color: "#93c5fd", cursor: "pointer", fontSize: "13px" }}>+ Add</button>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {whitelist.map(w => (
-          <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f1320", padding: "10px 14px", borderRadius: "8px", border: "1px solid #374151" }}>
-            <div>
-              <div style={{ color: "#f3f4f6", fontSize: "13px", fontFamily: "monospace" }}>{w.account_id}</div>
-              {w.display_name && <div style={{ color: "#9ca3af", fontSize: "11px" }}>{w.display_name}</div>}
-            </div>
-            <button onClick={() => removeFromWhitelist(w.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "12px" }}>✕ Remove</button>
-          </div>
-        ))}
-        {whitelist.length === 0 && <div style={{ color: "#9ca3af", fontSize: "13px", textAlign: "center", padding: "20px" }}>No whitelist entries yet.</div>}
-      </div>
-    </div>
-  );
-}
 // ============================================================
 function MembersTab({ role }) {
   const [members, setMembers]     = useState([]);
@@ -1303,12 +1344,20 @@ function AuctionTab({ role, currentUser }) {
         .from("auction_winners")
         .update({ bidder: winnerName, amount: winnerAmt, claimed: false })
         .eq("item_id", declareModal.id);
-      if (upErr) { alert("Failed to update winner: " + upErr.message); return; }
+      if (upErr) {
+        console.error("Winner update failed:", upErr.message, upErr.details, upErr.hint);
+        alert("Failed to update winner: " + upErr.message + (upErr.hint ? "\nHint: " + upErr.hint : ""));
+        return;
+      }
     } else {
       const { error: insErr } = await supabase
         .from("auction_winners")
         .insert([{ item_id: declareModal.id, item_name: declareModal.name, bidder: winnerName, amount: winnerAmt, claimed: false }]);
-      if (insErr) { alert("Failed to insert winner: " + insErr.message); return; }
+      if (insErr) {
+        console.error("Winner insert failed:", insErr.message, insErr.details, insErr.hint);
+        alert("Failed to insert winner: " + insErr.message + (insErr.hint ? "\nHint: " + insErr.hint : ""));
+        return;
+      }
     }
 
     // Update auction card with correct column format
@@ -1559,20 +1608,26 @@ function WinnersTab({ role, currentUser }) {
   const [loading, setLoading]   = useState(true);
   const [filterClaim, setFilterClaim] = useState("All");
   const [detailModal, setDetailModal] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
   const loadWinners = async () => {
-    const { data } = await supabase
+    setLoadError("");
+    const { data, error } = await supabase
       .from("auction_winners")
       .select("*")
       .order("created_at", { ascending: false });
+    if (error) {
+      console.error("Winners load error:", error.message, error.details, error.hint);
+      setLoadError("⚠️ Could not load winners: " + error.message + (error.hint ? " — " + error.hint : ""));
+    }
     if (data) setWinners(data);
     setLoading(false);
   };
 
   useEffect(() => {
     loadWinners();
-    const ch = supabase.channel("winners-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "auction_winners" }, loadWinners)
+    const ch = supabase.channel("winners-rt-v2")
+      .on("postgres_changes", { event: "*", schema: "public", table: "auction_winners" }, () => loadWinners())
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, []);
@@ -1606,7 +1661,16 @@ function WinnersTab({ role, currentUser }) {
 
   return (
     <div>
-      <SectionHeader icon="🥇" title="Auction Winners" sub="History log · claimed & unclaimed items" />
+      <SectionHeader icon="🥇" title="Auction Winners" sub="History log · claimed & unclaimed items" actions={[
+        <button key="refresh" onClick={loadWinners} style={{ ...btn("gray"), fontSize: "12px", padding: "6px 12px" }}>🔄 Refresh</button>
+      ]} />
+
+      {loadError && (
+        <div style={{ background: "#3a121222", border: `1px solid ${T.redHi}44`, borderRadius: "8px", color: T.redHi, fontSize: "13px", padding: "10px 14px", marginBottom: "16px" }}>
+          {loadError}
+          <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "4px" }}>Check your Supabase RLS policies on the <code>auction_winners</code> table — make sure authenticated users can SELECT and INSERT.</div>
+        </div>
+      )}
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "10px", marginBottom: "24px" }}>
