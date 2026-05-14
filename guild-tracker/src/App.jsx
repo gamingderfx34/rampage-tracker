@@ -1164,6 +1164,8 @@ function AuctionTab({ role, currentUser }) {
   const [saveError, setSaveError] = useState("");
   const [bidError, setBidError]   = useState("");
   const [uploadingImg, setUploadingImg] = useState(false);
+  const [declareModal, setDeclareModal] = useState(null);
+  const [declareForm, setDeclareForm]   = useState({ winnerName: "", amount: "" });
   const colFormat = useRef(null);
   const auctionImgRef = useRef(null);
 
@@ -1262,6 +1264,22 @@ function AuctionTab({ role, currentUser }) {
     if (window.confirm("Delete this auction item?")) {
       await supabase.from("auction_items").delete().eq("id", id);
     }
+  };
+
+  const openDeclare = (item) => {
+    setDeclareForm({ winnerName: item.bidder !== "-" ? item.bidder : "", amount: item.highestBid || "" });
+    setDeclareModal(item);
+  };
+
+  const confirmDeclare = async () => {
+    if (!declareForm.winnerName.trim()) return;
+    const { data: existing } = await supabase.from("auction_winners").select("id").eq("item_id", declareModal.id).maybeSingle();
+    if (existing) {
+      await supabase.from("auction_winners").update({ bidder: declareForm.winnerName.trim(), amount: +declareForm.amount || 0 }).eq("item_id", declareModal.id);
+    } else {
+      await supabase.from("auction_winners").insert([{ item_id: declareModal.id, item_name: declareModal.name, bidder: declareForm.winnerName.trim(), amount: +declareForm.amount || 0, claimed: false }]);
+    }
+    setDeclareModal(null);
   };
 
   const openBid = (item) => {
@@ -1363,6 +1381,7 @@ function AuctionTab({ role, currentUser }) {
                   {!ended && can(role, "placeBid") && <button onClick={() => openBid(item)} style={{ flex: 1, ...btn("gold"), padding: "6px", justifyContent: "center", textAlign: "center" }}>Place Bid</button>}
                   {can(role, "editAuction") && <button onClick={() => openEdit(item)} style={{ ...btn("gray"), padding: "6px 10px" }}>Edit</button>}
                   {can(role, "editAuction") && <button onClick={() => handleDelete(item.id)} style={{ ...btn("red"), padding: "6px 10px" }}>✕</button>}
+                  {can(role, "editAuction") && <button onClick={() => openDeclare(item)} style={{ ...btn("green"), padding: "6px 10px", fontSize: "11px" }} title="Declare Winner manually">🏆</button>}
                 </div>
               </div>
             </div>
@@ -1458,6 +1477,30 @@ function AuctionTab({ role, currentUser }) {
           </div>
         </Modal>
       )}
+      {declareModal && (
+        <Modal onClose={() => setDeclareModal(null)}>
+          <h2 style={{ color: T.text, marginTop: 0 }}>🏆 Declare Winner — {declareModal.name}</h2>
+          <div style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: "10px", padding: "12px", marginBottom: "14px" }}>
+            <div style={{ color: T.textSub, fontSize: "13px", marginBottom: "4px" }}>Current highest bid: <strong style={{ color: T.goldHi }}>{declareModal.highestBid} PTS — {declareModal.bidder}</strong></div>
+            <div style={{ color: T.textMuted, fontSize: "12px" }}>You can override the winner name and amount below (e.g. if no bids were placed).</div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <label style={labelStyle}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Winner Name (character name)</span>
+              <input type="text" value={declareForm.winnerName} onChange={e => setDeclareForm({ ...declareForm, winnerName: e.target.value })} style={inputStyle} placeholder="Enter winner's character name" autoFocus />
+            </label>
+            <label style={labelStyle}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Final Amount (PTS)</span>
+              <input type="number" min="0" value={declareForm.amount} onChange={e => setDeclareForm({ ...declareForm, amount: e.target.value })} style={inputStyle} placeholder="0" />
+            </label>
+          </div>
+          <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
+            <button onClick={() => setDeclareModal(null)} style={btn("gray")}>Cancel</button>
+            <button onClick={confirmDeclare} disabled={!declareForm.winnerName.trim()} style={{ ...btn("green"), opacity: !declareForm.winnerName.trim() ? 0.5 : 1 }}>✅ Declare Winner</button>
+          </div>
+        </Modal>
+      )}
+
     </div>
   );
 }
