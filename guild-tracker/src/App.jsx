@@ -433,8 +433,8 @@ function UsersTab({ currentUser }) {
           </div>
         </Modal>
       )}
-    </div>
-	<WhitelistManager />
+   <WhitelistManager />
+   </div>
   );
 }
 
