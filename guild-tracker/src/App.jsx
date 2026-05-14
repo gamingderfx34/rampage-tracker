@@ -263,8 +263,7 @@ if (!whitelist) { setRegError("❌ Your Account ID is not on the clan whitelist.
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <input placeholder="Your In-Game Account ID (from Settings > Account)" value={regForm.account_id} onChange={e => setRegForm({ ...regForm, account_id: e.target.value })} style={inputStyle} />
-<input placeholder="Display Name (character name)" value={regForm.display} onChange={e => setRegForm({ ...regForm, display: e.target.value })} style={inputStyle} autoFocus />
+            <input placeholder="Display Name (character name)" value={regForm.display} onChange={e => setRegForm({ ...regForm, display: e.target.value })} style={inputStyle} autoFocus />
             <input placeholder="Username (for login)" value={regForm.username} onChange={e => setRegForm({ ...regForm, username: e.target.value })} style={inputStyle} />
             <input type="password" placeholder="Password" value={regForm.password} onChange={e => setRegForm({ ...regForm, password: e.target.value })} style={inputStyle} />
             {regError && <div style={{ color: T.redHi, fontSize: "13px" }}>{regError}</div>}
@@ -435,11 +434,62 @@ function UsersTab({ currentUser }) {
         </Modal>
       )}
     </div>
+	<WhitelistManager />
   );
 }
 
 // ============================================================
 // MEMBERS TAB
+function WhitelistManager() {
+  const [whitelist, setWhitelist] = useState([]);
+  const [newId, setNewId] = useState("");
+  const [newName, setNewName] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase.from("clan_whitelist").select("*").order("created_at", { ascending: false });
+      if (data) setWhitelist(data);
+    };
+    load();
+  }, []);
+
+  const addToWhitelist = async () => {
+    if (!newId.trim()) return;
+    await supabase.from("clan_whitelist").insert([{ account_id: newId.trim(), display_name: newName.trim(), approved_by: "admin" }]);
+    setNewId(""); setNewName("");
+    const { data } = await supabase.from("clan_whitelist").select("*").order("created_at", { ascending: false });
+    if (data) setWhitelist(data);
+  };
+
+  const removeFromWhitelist = async (id) => {
+    if (!window.confirm("Remove from whitelist?")) return;
+    await supabase.from("clan_whitelist").delete().eq("id", id);
+    setWhitelist(prev => prev.filter(w => w.id !== id));
+  };
+
+  return (
+    <div style={{ marginTop: "32px", background: "#1a1f2e", border: "1px solid #374151", borderRadius: "12px", padding: "20px" }}>
+      <div style={{ color: "#f3f4f6", fontWeight: "700", fontSize: "14px", marginBottom: "16px" }}>🛡️ Clan Whitelist ({whitelist.length})</div>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <input placeholder="Account ID" value={newId} onChange={e => setNewId(e.target.value)} style={{ flex: 2, padding: "8px 10px", background: "#0f1320", border: "1px solid #374151", borderRadius: "6px", color: "#f3f4f6", fontSize: "13px" }} />
+        <input placeholder="Display Name (optional)" value={newName} onChange={e => setNewName(e.target.value)} style={{ flex: 2, padding: "8px 10px", background: "#0f1320", border: "1px solid #374151", borderRadius: "6px", color: "#f3f4f6", fontSize: "13px" }} />
+        <button onClick={addToWhitelist} style={{ padding: "8px 16px", background: "#1e3a8a", border: "none", borderRadius: "6px", color: "#93c5fd", cursor: "pointer", fontSize: "13px" }}>+ Add</button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {whitelist.map(w => (
+          <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f1320", padding: "10px 14px", borderRadius: "8px", border: "1px solid #374151" }}>
+            <div>
+              <div style={{ color: "#f3f4f6", fontSize: "13px", fontFamily: "monospace" }}>{w.account_id}</div>
+              {w.display_name && <div style={{ color: "#9ca3af", fontSize: "11px" }}>{w.display_name}</div>}
+            </div>
+            <button onClick={() => removeFromWhitelist(w.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "12px" }}>✕ Remove</button>
+          </div>
+        ))}
+        {whitelist.length === 0 && <div style={{ color: "#9ca3af", fontSize: "13px", textAlign: "center", padding: "20px" }}>No whitelist entries yet.</div>}
+      </div>
+    </div>
+  );
+}
 // ============================================================
 function MembersTab({ role }) {
   const [members, setMembers]     = useState([]);
