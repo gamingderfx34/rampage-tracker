@@ -10,7 +10,7 @@ const CAN = {
   killBoss:       ["admin", "leader", "elder"],
   editBoss:       ["admin", "leader", "elder", "member"],
   addAuction:     ["admin", "leader"],
-  editAuction:    ["admin", "leader", "elder"],
+  editAuction:    ["admin", "leader", "elder"],   // elder can edit auction items
   placeBid:       ["admin", "leader", "elder", "member"],
   manageUsers:    ["admin"],
   markAttendance: ["admin", "leader"],
@@ -607,10 +607,13 @@ function BossTimerTab({ bosses, setBosses, role }) {
   const [now, setNow]             = useState(Date.now());
   const [showModal, setShowModal] = useState(false);
   const [editBoss, setEditBoss]   = useState(null);
-  const [form, setForm]           = useState({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9" });
+  const [form, setForm]           = useState({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9", imageUrl: "" });
   const [channel, setChannel]     = useState(1);
   const [killModal, setKillModal] = useState(null);
   const [killOffset, setKillOffset] = useState(0);
+  const [uploadingBossImg, setUploadingBossImg] = useState(false);
+  const [bossSaveErr, setBossSaveErr] = useState("");
+  const bossImgRef = useRef(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
@@ -628,15 +631,28 @@ function BossTimerTab({ bosses, setBosses, role }) {
   const stateDots   = { unknown: T.textMuted, waiting: T.blueHi, spawning: T.greenHi, overdue: T.redHi };
   const filtered    = bosses.filter(b => b.channel === channel);
 
-  const openAdd  = () => { setEditBoss(null); setForm({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9" }); setShowModal(true); };
-  const openEdit = (b) => { setEditBoss(b); setForm({ ...b }); setShowModal(true); };
+  const openAdd  = () => { setEditBoss(null); setBossSaveErr(""); setForm({ name: "", respawnMin: 30, respawnMax: 60, windowDuration: 30, channel: 1, color: "#4a90d9", imageUrl: "" }); setShowModal(true); };
+  const openEdit = (b) => { setEditBoss(b); setBossSaveErr(""); setForm({ ...b, imageUrl: b.imageUrl || "" }); setShowModal(true); };
   const handleSave = () => {
     if (!form.name) return;
-    if (editBoss) setBosses(bosses.map(b => b.id === editBoss.id ? { ...form, id: b.id, respawnMin: +form.respawnMin, respawnMax: +form.respawnMax, windowDuration: +form.windowDuration, channel: +form.channel, lastKilled: b.lastKilled } : b));
-    else setBosses([...bosses, { ...form, id: Date.now(), respawnMin: +form.respawnMin, respawnMax: +form.respawnMax, windowDuration: +form.windowDuration, channel: +form.channel, lastKilled: null }]);
+    if (editBoss) setBosses(bosses.map(b => b.id === editBoss.id ? { ...form, id: b.id, respawnMin: +form.respawnMin, respawnMax: +form.respawnMax, windowDuration: +form.windowDuration, channel: +form.channel, lastKilled: b.lastKilled, imageUrl: form.imageUrl || "" } : b));
+    else setBosses([...bosses, { ...form, id: Date.now(), respawnMin: +form.respawnMin, respawnMax: +form.respawnMax, windowDuration: +form.windowDuration, channel: +form.channel, lastKilled: null, imageUrl: form.imageUrl || "" }]);
     setShowModal(false);
   };
   const confirmKill = () => { setBosses(bosses.map(b => b.id === killModal.id ? { ...b, lastKilled: Date.now() - killOffset * 60000 } : b)); setKillModal(null); };
+
+  const uploadBossImage = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingBossImg(true);
+    const ext = file.name.split(".").pop();
+    const filename = `boss_${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("boss-images").upload(filename, file, { upsert: true, contentType: file.type });
+    setUploadingBossImg(false);
+    if (upErr) { setBossSaveErr("Upload failed: " + upErr.message); return; }
+    const { data: urlData } = supabase.storage.from("boss-images").getPublicUrl(filename);
+    if (urlData?.publicUrl) setForm(f => ({ ...f, imageUrl: urlData.publicUrl }));
+  };
 
   return (
     <div>
@@ -652,7 +668,12 @@ function BossTimerTab({ bosses, setBosses, role }) {
           const { state, label } = getBossState(boss);
           return (
             <div key={boss.id} style={{ background: stateColors[state], border: `1px solid ${stateDots[state]}44`, borderRadius: "12px", padding: "16px 20px", display: "flex", alignItems: "center", gap: "16px" }}>
-              <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: boss.color + "22", border: `2px solid ${boss.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>👹</div>
+              <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: boss.color + "22", border: `2px solid ${boss.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0, overflow: "hidden" }}>
+                {boss.imageUrl
+                  ? <img src={boss.imageUrl} alt="boss" style={{ width: "52px", height: "52px", objectFit: "cover", borderRadius: "50%" }} />
+                  : "👹"
+                }
+              </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
                   <span style={{ color: T.text, fontWeight: "700", fontSize: "16px" }}>{boss.name}</span>
@@ -696,11 +717,34 @@ function BossTimerTab({ bosses, setBosses, role }) {
             {[["Boss Name", "name", "text"], ["Min Respawn (min)", "respawnMin", "number"], ["Max Respawn (min)", "respawnMax", "number"], ["Window Duration (min)", "windowDuration", "number"], ["Channel", "channel", "number"]].map(([label, key, type]) => (
               <label key={key} style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>{label}</span><input type={type} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} style={inputStyle} /></label>
             ))}
-            <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Boss Color</span><input type="color" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} style={{ ...inputStyle, height: "40px", cursor: "pointer" }} /></label>
+            <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Boss Color (icon ring)</span><input type="color" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} style={{ ...inputStyle, height: "40px", cursor: "pointer" }} /></label>
+            {/* Boss image upload */}
+            <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Boss Image (78×78 px — replaces 👹 icon)</span>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <div style={{ width: "78px", height: "78px", borderRadius: "50%", border: `2px solid ${form.color}66`, background: form.color + "22", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                  {form.imageUrl
+                    ? <img src={form.imageUrl} alt="boss preview" style={{ width: "78px", height: "78px", objectFit: "cover", borderRadius: "50%" }} />
+                    : <span style={{ fontSize: "28px" }}>👹</span>
+                  }
+                </div>
+                <div style={{ flex: 1 }}>
+                  <input ref={bossImgRef} type="file" accept="image/*" onChange={uploadBossImage} style={{ display: "none" }} />
+                  <button onClick={() => bossImgRef.current?.click()} disabled={uploadingBossImg} style={{ ...btn("blue"), width: "100%", marginBottom: "6px" }}>
+                    {uploadingBossImg ? "Uploading…" : "📷 Upload Boss Image"}
+                  </button>
+                  {form.imageUrl && (
+                    <button onClick={() => setForm(f => ({ ...f, imageUrl: "" }))} style={{ ...btn("red"), width: "100%", fontSize: "12px", padding: "5px" }}>✕ Remove Image</button>
+                  )}
+                  {!form.imageUrl && <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "4px" }}>PNG/JPG, ideally 78×78px. Stored in Supabase Storage "boss-images".</div>}
+                </div>
+              </div>
+            </label>
           </div>
+          {bossSaveErr && <div style={{ color: T.redHi, fontSize: "12px", marginTop: "8px" }}>{bossSaveErr}</div>}
           <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowModal(false)} style={btn("gray")}>Cancel</button>
-            <button onClick={handleSave} style={btn("blue")}>Save</button>
+            <button onClick={handleSave} disabled={uploadingBossImg} style={{ ...btn("blue"), opacity: uploadingBossImg ? 0.6 : 1 }}>Save</button>
           </div>
         </Modal>
       )}
@@ -943,12 +987,14 @@ function AuctionTab({ role, currentUser }) {
   const [filter, setFilter]       = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem]   = useState(null);
-  const [form, setForm]           = useState({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48 });
+  const [form, setForm]           = useState({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48, imageUrl: "" });
   const [bidModal, setBidModal]   = useState(null);
   const [bidForm, setBidForm]     = useState({ amount: "", bidder: "" });
   const [saveError, setSaveError] = useState("");
   const [bidError, setBidError]   = useState("");
+  const [uploadingImg, setUploadingImg] = useState(false);
   const colFormat = useRef(null);
+  const auctionImgRef = useRef(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
 
@@ -966,6 +1012,7 @@ function AuctionTab({ role, currentUser }) {
         name:       row.name,
         type:       row.type || "Equipment",
         imageEmoji: row.imageEmoji || row.image_emoji || "⚔️",
+        imageUrl:   row.imageUrl || row.image_url || "",
         highestBid: row.highestBid ?? row.highest_bid ?? 0,
         bidder:     row.bidder ?? "-",
         endsAt:     row.endsAt || row.ends_at ? new Date(row.endsAt ?? row.ends_at).getTime() : Date.now() + 3600000 * 48,
@@ -983,22 +1030,22 @@ function AuctionTab({ role, currentUser }) {
   }, []);
 
   const buildPayload = (fields) => {
-    if (colFormat.current === "camel") return { name: fields.name, type: fields.type, imageEmoji: fields.emoji, highestBid: fields.highestBid, bidder: fields.bidder, endsAt: fields.endsAt };
-    return { name: fields.name, type: fields.type, image_emoji: fields.emoji, highest_bid: fields.highestBid, bidder: fields.bidder, ends_at: fields.endsAt };
+    if (colFormat.current === "camel") return { name: fields.name, type: fields.type, imageEmoji: fields.emoji, imageUrl: fields.imageUrl, highestBid: fields.highestBid, bidder: fields.bidder, endsAt: fields.endsAt };
+    return { name: fields.name, type: fields.type, image_emoji: fields.emoji, image_url: fields.imageUrl, highest_bid: fields.highestBid, bidder: fields.bidder, ends_at: fields.endsAt };
   };
 
   const EMOJIS = { Equipment: "⚔️", Material: "💎", Consumable: "🧪", Currency: "💰" };
   const types  = ["All", "Equipment", "Material", "Consumable", "Currency"];
   const filtered = auctions.filter(a => filter === "All" || a.type === filter);
 
-  const openAdd  = () => { setSaveError(""); setEditItem(null); setForm({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48 }); setShowModal(true); };
-  const openEdit = (a) => { setSaveError(""); setEditItem(a); setForm({ ...a, hoursLeft: Math.max(0, Math.round((a.endsAt - Date.now()) / 3600000)) }); setShowModal(true); };
+  const openAdd  = () => { setSaveError(""); setEditItem(null); setForm({ name: "", type: "Equipment", highestBid: 0, bidder: "-", hoursLeft: 48, imageUrl: "" }); setShowModal(true); };
+  const openEdit = (a) => { setSaveError(""); setEditItem(a); setForm({ ...a, hoursLeft: Math.max(0, Math.round((a.endsAt - Date.now()) / 3600000)), imageUrl: a.imageUrl || "" }); setShowModal(true); };
 
   const handleSave = async () => {
     if (!form.name) return;
     setSaveError("");
     const endsAt  = new Date(Date.now() + +form.hoursLeft * 3600000).toISOString();
-    const payload = buildPayload({ name: form.name, type: form.type, emoji: EMOJIS[form.type] || "⚔️", highestBid: +form.highestBid, bidder: form.bidder || "-", endsAt });
+    const payload = buildPayload({ name: form.name, type: form.type, emoji: EMOJIS[form.type] || "⚔️", imageUrl: form.imageUrl || "", highestBid: +form.highestBid, bidder: form.bidder || "-", endsAt });
     let result;
     if (editItem) result = await supabase.from("auction_items").update(payload).eq("id", editItem.id).select();
     else result = await supabase.from("auction_items").insert([payload]).select();
@@ -1064,6 +1111,26 @@ function AuctionTab({ role, currentUser }) {
     setBidModal(null);
   };
 
+  // Upload image to Supabase storage and return public URL
+  const uploadImage = async (file, bucket = "auction-images") => {
+    if (!file) return "";
+    setUploadingImg(true);
+    const ext = file.name.split(".").pop();
+    const filename = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await supabase.storage.from(bucket).upload(filename, file, { upsert: true, contentType: file.type });
+    setUploadingImg(false);
+    if (upErr) { setSaveError("Image upload failed: " + upErr.message); return ""; }
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filename);
+    return urlData?.publicUrl || "";
+  };
+
+  const handleAuctionImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = await uploadImage(file, "auction-images");
+    if (url) setForm(f => ({ ...f, imageUrl: url }));
+  };
+
   const getTimeColor = (endsAt) => { const diff = endsAt - now; if (diff < 3600000) return T.redHi; if (diff < 86400000) return T.goldHi; return T.textSub; };
 
   if (loading) return <div style={{ color: T.textMuted, textAlign: "center", padding: "40px" }}>Loading auctions…</div>;
@@ -1085,8 +1152,11 @@ function AuctionTab({ role, currentUser }) {
           const ended = item.endsAt < now;
           return (
             <div key={item.id} style={{ background: T.bg2, border: `1px solid ${ended ? T.border : T.borderHi}`, borderRadius: "14px", overflow: "hidden", opacity: ended ? 0.65 : 1, transition: "transform 0.15s" }}>
-              <div style={{ background: T.bg3, padding: "24px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "52px", position: "relative" }}>
-                {item.imageEmoji}
+              <div style={{ background: T.bg3, padding: "24px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "52px", position: "relative", height: "100px" }}>
+                {item.imageUrl
+                  ? <img src={item.imageUrl} alt={item.name} style={{ width: "78px", height: "78px", objectFit: "cover", borderRadius: "8px" }} />
+                  : <span style={{ fontSize: "52px" }}>{item.imageEmoji}</span>
+                }
                 <span style={{ position: "absolute", bottom: "8px", left: "50%", transform: "translateX(-50%)", background: ended ? T.bg0 : T.goldGlow, color: ended ? T.textMuted : T.goldHi, border: `1px solid ${ended ? T.border : T.gold}55`, fontSize: "10px", padding: "2px 10px", borderRadius: "20px", whiteSpace: "nowrap", fontWeight: "700", letterSpacing: "0.06em" }}>{ended ? "ENDED" : "LIVE"}</span>
               </div>
               <div style={{ padding: "12px 14px" }}>
@@ -1114,11 +1184,33 @@ function AuctionTab({ role, currentUser }) {
             <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Hours Left</span><input type="number" value={form.hoursLeft} onChange={e => setForm({ ...form, hoursLeft: e.target.value })} style={inputStyle} /></label>
             <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Starting Bid (PTS)</span><input type="number" value={form.highestBid} onChange={e => setForm({ ...form, highestBid: e.target.value })} style={inputStyle} /></label>
             <label style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>Starting Bidder</span><input type="text" value={form.bidder} onChange={e => setForm({ ...form, bidder: e.target.value })} style={inputStyle} /></label>
+            {/* Image upload */}
+            <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
+              <span style={{ color: T.textSub, fontSize: "12px" }}>Item Image (78×78 px — replaces emoji)</span>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <div style={{ width: "78px", height: "78px", borderRadius: "8px", border: `1px dashed ${T.borderHi}`, background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                  {form.imageUrl
+                    ? <img src={form.imageUrl} alt="preview" style={{ width: "78px", height: "78px", objectFit: "cover", borderRadius: "8px" }} />
+                    : <span style={{ fontSize: "32px" }}>{EMOJIS[form.type] || "⚔️"}</span>
+                  }
+                </div>
+                <div style={{ flex: 1 }}>
+                  <input ref={auctionImgRef} type="file" accept="image/*" onChange={handleAuctionImageUpload} style={{ display: "none" }} />
+                  <button onClick={() => auctionImgRef.current?.click()} disabled={uploadingImg} style={{ ...btn("blue"), width: "100%", marginBottom: "6px" }}>
+                    {uploadingImg ? "Uploading…" : "📷 Upload Image"}
+                  </button>
+                  {form.imageUrl && (
+                    <button onClick={() => setForm(f => ({ ...f, imageUrl: "" }))} style={{ ...btn("red"), width: "100%", fontSize: "12px", padding: "5px" }}>✕ Remove Image</button>
+                  )}
+                  {!form.imageUrl && <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "4px" }}>PNG/JPG, ideally 78×78px</div>}
+                </div>
+              </div>
+            </label>
           </div>
           {saveError && <div style={{ color: T.redHi, fontSize: "12px", marginTop: "8px" }}>{saveError}</div>}
           <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowModal(false)} style={btn("gray")}>Cancel</button>
-            <button onClick={handleSave} style={btn("gold")}>Save</button>
+            <button onClick={handleSave} disabled={uploadingImg} style={{ ...btn("gold"), opacity: uploadingImg ? 0.6 : 1 }}>Save</button>
           </div>
         </Modal>
       )}
