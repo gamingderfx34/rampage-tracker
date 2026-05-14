@@ -5,18 +5,18 @@ import { supabase } from "./supabase";
 // ROLE PERMISSIONS
 // ============================================================
 const CAN = {
-  editMembers:   ["admin", "leader", "elder"],
-  deleteMembers: ["admin", "leader"],
-  killBoss:      ["admin", "leader", "elder"],
-  editBoss:      ["admin", "leader", "elder"],
-  uploadImage:   ["admin", "leader", "elder"],
-  addAuction:    ["admin", "leader", "elder"],
-  editAuction:   ["admin", "leader", "elder"],
-  placeBid:      ["admin", "leader", "elder", "member"],
-  manageUsers:   ["admin"],
-  markAttendance: ["admin", "leader"],
-  manageWinners: ["admin", "leader", "elder"],
-  addPoints:     ["admin", "leader", "elder"],
+  editMembers:   ["admin", "creator", "leader", "elder"],
+  deleteMembers: ["admin", "creator", "leader"],
+  killBoss:      ["admin", "creator", "leader", "elder", "member"],
+  editBoss:      ["admin", "creator", "leader", "elder"],
+  uploadImage:   ["admin", "creator", "leader", "elder"],
+  addAuction:    ["admin", "creator", "leader", "elder"],
+  editAuction:   ["admin", "creator", "leader", "elder"],
+  placeBid:      ["admin", "creator", "leader", "elder", "member"],
+  manageUsers:   ["admin", "creator"],
+  markAttendance: ["admin", "creator", "leader"],
+  manageWinners: ["admin", "creator", "leader", "elder"],
+  addPoints:     ["admin", "creator", "leader", "elder"],
 };
 const can = (role, action) => CAN[action]?.includes(role);
 
@@ -115,11 +115,12 @@ const activityColors = {
   Inactive: { bg: T.bg3,    text: T.textMuted, dot: T.textMuted },
 };
 const roleColors = {
-  admin:   { bg: "#3a0a0a", text: "#fca5a5", label: "🛠️ Creator"    },
-  leader:  { bg: "#3a2003", text: "#fcd34d", label: "👑️ Leader"  },
-  elder:   { bg: "#0d1f3a", text: "#60a5fa", label: "⚔️ Elder"    },
-  member:  { bg: T.bg3,    text: T.textSub,  label: "👤 Member"  },
-  pending: { bg: T.bg3,    text: T.textMuted, label: "⏳ Pending" },
+  admin:   { bg: "#3a0a0a", text: "#fca5a5", label: "🛠️ Admin"     },
+  creator: { bg: "#4a0a2a", text: "#f9a8d4", label: "👑 Creator"   },
+  leader:  { bg: "#3a2003", text: "#fcd34d", label: "👑️ Leader"   },
+  elder:   { bg: "#0d1f3a", text: "#60a5fa", label: "⚔️ Elder"     },
+  member:  { bg: T.bg3,    text: T.textSub,  label: "👤 Member"   },
+  pending: { bg: T.bg3,    text: T.textMuted, label: "⏳ Pending"  },
 };
 
 // Decorative divider line
@@ -425,7 +426,7 @@ function UsersTab({ currentUser }) {
             <label style={labelStyle}>
               <span style={{ color: T.textSub, fontSize: "12px" }}>Role</span>
               <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={inputStyle}>
-                {["admin", "leader", "elder", "member"].map(r => <option key={r} value={r}>{roleColors[r].label} — {r}</option>)}
+                {["admin", "creator", "leader", "elder", "member"].map(r => <option key={r} value={r}>{roleColors[r].label} — {r}</option>)}
               </select>
             </label>
           </div>
@@ -634,8 +635,10 @@ const addPoints = async (member, amount) => {
                     {can(role, "addPoints") && (
                       <button onClick={() => resetPoints(m)} style={{ background: "none", border: "none", color: T.redHi, cursor: "pointer", fontSize: "11px", marginLeft: "6px" }} title="Reset points">↺</button>
                     )}
-					<button onClick={() => { const v = prompt("Add or remove points (e.g. 50 or -50):"); if (v !== null) addPoints(m, parseInt(v) || 0); }} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: "11px", marginLeft: "4px" }} title="Add/Remove points">✎</button>
-  </td>
+                    {can(role, "addPoints") && (
+                      <button onClick={() => { const v = prompt("Add or remove points (e.g. 50 or -50):"); if (v !== null) addPoints(m, parseInt(v) || 0); }} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: "11px", marginLeft: "4px" }} title="Add/Remove points">✎</button>
+                    )}
+                  </td>
                   <td style={{ padding: "10px 10px" }}><span style={{ background: ac.bg, color: ac.text, padding: "3px 10px", borderRadius: "20px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}><span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ac.dot }}></span>{m.activity}</span></td>
                   <td style={{ padding: "10px 10px", color: T.textSub, maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.comment || "—"}</td>
                   {can(role, "editMembers") && (
@@ -739,12 +742,21 @@ function BossTimerTab({ role }) {
 
   const getBossState = (boss) => {
     if (!boss.lastKilled) return { state: "unknown", label: "No Data — waiting for first kill" };
-    const elapsed   = now - boss.lastKilled;
-    const respawnMs = boss.respawnMin * 60000;
-    const windowMs  = boss.windowDuration * 60000;
-    if (elapsed < respawnMs)            return { state: "waiting",  label: `Spawn window in ${formatTime(respawnMs - elapsed)}` };
-    if (elapsed < respawnMs + windowMs) return { state: "spawning", label: `🟢 SPAWN WINDOW — ${formatTime(respawnMs + windowMs - elapsed)} left` };
-    return { state: "overdue", label: "⚠️ Overdue — boss may have spawned!" };
+    const elapsed     = now - boss.lastKilled;
+    const respawnMs   = boss.respawnMin * 60000;
+    const maxMs       = 80 * 60000; // hard cap 1hr 20min
+    const fiveMin     = 5 * 60000;
+    // After respawnMin, extend window in 5-min chunks until boss is killed (max 80min total)
+    // Calculate current window end: respawnMin + ceiling-to-next-5min chunk, capped at maxMs
+    let windowEnd = respawnMs + fiveMin;
+    while (windowEnd < elapsed && windowEnd < maxMs) windowEnd += fiveMin;
+    if (elapsed < respawnMs) return { state: "waiting", label: `Spawn window in ${formatTime(respawnMs - elapsed)}` };
+    if (elapsed < maxMs) {
+      const remaining = windowEnd - elapsed;
+      const chunkLabel = remaining > 0 ? `+5min check in ${formatTime(remaining)}` : "Checking…";
+      return { state: "spawning", label: `🟢 SPAWN WINDOW — ${chunkLabel}` };
+    }
+    return { state: "overdue", label: "⚠️ Overdue (1h 20m+) — boss likely spawned. Mark it killed!" };
   };
 
   const stateColors = { unknown: T.bg3, waiting: "#0d1f3a", spawning: "#0a2718", overdue: "#3a1212" };
@@ -843,7 +855,7 @@ function BossTimerTab({ role }) {
           <p style={{ color: T.textSub, fontSize: "14px" }}>Adjust if you killed it a few minutes ago.</p>
           <label style={labelStyle}>
             <span style={{ color: T.textSub, fontSize: "13px" }}>Minutes ago: {killOffset}m</span>
-            <input type="range" min={0} max={60} step={1} value={killOffset} onChange={e => setKillOffset(+e.target.value)} style={{ width: "100%", marginTop: "8px", accentColor: T.red }} />
+            <input type="range" min={0} max={80} step={1} value={killOffset} onChange={e => setKillOffset(+e.target.value)} style={{ width: "100%", marginTop: "8px", accentColor: T.red }} />
           </label>
           <p style={{ color: T.blueHi, fontSize: "13px" }}>Kill time: {killOffset === 0 ? "Right now" : `${killOffset} minute(s) ago`}</p>
           <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
@@ -873,9 +885,8 @@ function BossTimerTab({ role }) {
               <input type="color" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} style={{ ...inputStyle, height: "40px", cursor: "pointer", padding: "4px" }} />
             </label>
 
-            {/* Boss Image Upload — only for admin/leader/elder */}
-            {can(role, "uploadImage") && (
-              <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
+            {/* Boss Image Upload */}
+            <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
                 <span style={{ color: T.textSub, fontSize: "12px" }}>Boss Image (replaces 👹 icon — 78×78px recommended)</span>
                 <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "4px" }}>
                   {/* Preview circle */}
@@ -898,7 +909,6 @@ function BossTimerTab({ role }) {
                   </div>
                 </div>
               </label>
-            )}
           </div>
           {saveErr && <div style={{ background: "#3a121222", border: `1px solid ${T.red}44`, borderRadius: "6px", color: T.redHi, fontSize: "12px", padding: "8px 12px", marginTop: "10px" }}>{saveErr}</div>}
           <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
@@ -1172,18 +1182,15 @@ function AuctionTab({ role, currentUser }) {
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
   // Auto-create winner when auction ends and has a valid bidder
-  const processedWinners = useRef(new Set());
   useEffect(() => {
     const checkEnded = async () => {
       const ended = auctions.filter(a =>
         a.endsAt < Date.now() &&
         a.bidder &&
         a.bidder !== "-" &&
-        a.highestBid > 0 &&
-        !processedWinners.current.has(a.id)
+        a.highestBid > 0
       );
       for (const item of ended) {
-        // Check if winner already exists for this item
         const { data: existing } = await supabase
           .from("auction_winners")
           .select("id")
@@ -1198,7 +1205,6 @@ function AuctionTab({ role, currentUser }) {
             claimed:   false,
           }]);
         }
-        processedWinners.current.add(item.id);
       }
     };
     if (auctions.length > 0) checkEnded();
@@ -1274,13 +1280,22 @@ function AuctionTab({ role, currentUser }) {
 
   const confirmDeclare = async () => {
     if (!declareForm.winnerName.trim()) return;
+    const winnerName = declareForm.winnerName.trim();
+    const winnerAmt  = +declareForm.amount || 0;
+    // Insert or update winner record
     const { data: existing } = await supabase.from("auction_winners").select("id").eq("item_id", declareModal.id).maybeSingle();
     if (existing) {
-      await supabase.from("auction_winners").update({ bidder: declareForm.winnerName.trim(), amount: +declareForm.amount || 0 }).eq("item_id", declareModal.id);
+      await supabase.from("auction_winners").update({ bidder: winnerName, amount: winnerAmt }).eq("item_id", declareModal.id);
     } else {
-      await supabase.from("auction_winners").insert([{ item_id: declareModal.id, item_name: declareModal.name, bidder: declareForm.winnerName.trim(), amount: +declareForm.amount || 0, claimed: false }]);
+      await supabase.from("auction_winners").insert([{ item_id: declareModal.id, item_name: declareModal.name, bidder: winnerName, amount: winnerAmt, claimed: false }]);
     }
+    // Also update the auction item card so the bidder name is visible there too
+    const bidPayload = declareModal.highestBid !== undefined
+      ? (typeof declareModal.highestBid !== "undefined" ? { highest_bid: winnerAmt, bidder: winnerName } : { highestBid: winnerAmt, bidder: winnerName })
+      : { bidder: winnerName };
+    await supabase.from("auction_items").update(bidPayload).eq("id", declareModal.id);
     setDeclareModal(null);
+    loadAuctions();
   };
 
   const openBid = (item) => {
