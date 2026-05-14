@@ -198,13 +198,14 @@ function LoginPage({ onLogin }) {
   const [error, setError]                 = useState("");
   const [showPass, setShowPass]           = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  const [regForm, setRegForm]             = useState({ display: "", username: "", password: "" });
+ const [regForm, setRegForm] = useState({ display: "", username: "", password: "", account_id: "" });
   const [regError, setRegError]           = useState("");
   const [regSuccess, setRegSuccess]       = useState(false);
 
   const handleRegister = async () => {
-    if (!regForm.username || !regForm.password || !regForm.display) { setRegError("Please fill in all fields."); return; }
-    const { data: existing } = await supabase.from("users").select("id").eq("username", regForm.username.toLowerCase().trim()).maybeSingle();
+    if (!regForm.username || !regForm.password || !regForm.display) { setRegError("Please fill in all fields."); return; }if (!regForm.username || !regForm.password || !regForm.display || !regForm.account_id) { setRegError("Please fill in all fields."); return; }
+const { data: whitelist } = await supabase.from("clan_whitelist").select("*").eq("account_id", regForm.account_id.trim()).maybeSingle();
+if (!whitelist) { setRegError("❌ Your Account ID is not on the clan whitelist. Contact your admin."); return; }const { data: existing } = await supabase.from("users").select("id").eq("username", regForm.username.toLowerCase().trim()).maybeSingle();
     if (existing) { setRegError("Username already taken."); return; }
     const { error: insertErr } = await supabase.from("users").insert([{
       username: regForm.username.toLowerCase().trim(),
@@ -261,6 +262,7 @@ function LoginPage({ onLogin }) {
             <button onClick={() => { setIsRegistering(true); setError(""); setRegSuccess(false); }} style={{ background: "none", border: "none", color: T.textMuted, fontSize: "13px", cursor: "pointer" }}>Register new account</button>
           </div>
         ) : (
+<input placeholder="Your In-Game Account ID (from Settings > Account)" value={regForm.account_id} onChange={e => setRegForm({ ...regForm, account_id: e.target.value })} style={inputStyle} />
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <input placeholder="Display Name (character name)" value={regForm.display} onChange={e => setRegForm({ ...regForm, display: e.target.value })} style={inputStyle} autoFocus />
             <input placeholder="Username (for login)" value={regForm.username} onChange={e => setRegForm({ ...regForm, username: e.target.value })} style={inputStyle} />
