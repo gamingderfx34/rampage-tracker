@@ -540,11 +540,13 @@ function MembersTab({ role }) {
   const [loading, setLoading]     = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editMember, setEditMember] = useState(null);
-  const [form, setForm]           = useState({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" });
+  const [form, setForm]           = useState({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "", class_image_url: "" });
   const [sortBy, setSortBy]       = useState("growthPower");
   const [sortDir, setSortDir]     = useState("desc");
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
+  const [uploadingClassImg, setUploadingClassImg] = useState(false);
+  const classImgRef = useRef(null);
 
   const loadMembers = async () => {
     const { data: membersData, error } = await supabase.from("members").select("*").order("growthPower", { ascending: false });
@@ -595,12 +597,24 @@ const addPoints = async (member, amount) => {
   await supabase.from("members").update({ points: newPoints }).eq("id", member.id);
   loadMembers();
 };
-  const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "" }); setShowModal(true); };
-  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: m.class, position: m.position, growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity, comment: m.comment || "" }); setShowModal(true); };
+  const openAdd  = () => { setEditMember(null); setForm({ name: "", class: "Archer", position: "Member", growthPower: "", multiplier: "", activity: "Active", comment: "", class_image_url: "" }); setShowModal(true); };
+  const openEdit = (m) => { setEditMember(m); setForm({ name: m.name, class: m.class || "Archer", position: m.position, growthPower: m.growthPower, multiplier: m.multiplier, activity: m.activity, comment: m.comment || "", class_image_url: m.class_image_url || "" }); setShowModal(true); };
 
+  const uploadClassImage = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingClassImg(true);
+    const ext = file.name.split(".").pop();
+    const filename = `class_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("class-images").upload(filename, file, { upsert: true, contentType: file.type });
+    setUploadingClassImg(false);
+    if (upErr) { alert("Upload failed: " + upErr.message); return; }
+    const { data: urlData } = supabase.storage.from("class-images").getPublicUrl(filename);
+    if (urlData?.publicUrl) setForm(f => ({ ...f, class_image_url: urlData.publicUrl }));
+  };
   const handleSave = async () => {
     if (!form.name) return;
-    const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment };
+    const payload = { name: form.name, class: form.class, position: form.position, growthPower: +form.growthPower || 0, multiplier: +form.multiplier || 1, activity: form.activity, comment: form.comment, class_image_url: form.class_image_url || null };
     if (editMember) await supabase.from("members").update(payload).eq("id", editMember.id);
     else await supabase.from("members").insert([{ ...payload, points: 0 }]);
     setShowModal(false);
@@ -667,7 +681,15 @@ const addPoints = async (member, amount) => {
                 <tr key={m.id} style={{ borderBottom: `1px solid ${T.border}`, background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)" }}>
                   <td style={{ padding: "10px 10px", color: T.textMuted }}>{i + 1}</td>
                   <td style={{ padding: "10px 10px", color: T.text, fontWeight: "600" }}>{m.name}</td>
-                  <td style={{ padding: "10px 10px", color: T.textSub }}>{m.class}</td>
+                  <td style={{ padding: "10px 10px", color: T.textSub }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                      {m.class_image_url
+                        ? <img src={m.class_image_url} alt={m.class} style={{ width: "26px", height: "26px", borderRadius: "5px", objectFit: "cover", border: `1px solid ${T.border}` }} onError={e => { e.target.style.display = "none"; }} />
+                        : <span style={{ width: "26px", height: "26px", display: "inline-flex", alignItems: "center", justifyContent: "center", background: T.bg3, borderRadius: "5px", border: `1px solid ${T.border}`, fontSize: "13px" }}>⚔️</span>
+                      }
+                      <span>{m.class && m.class !== "—" ? m.class : <span style={{ color: T.textMuted, fontStyle: "italic" }}>No class</span>}</span>
+                    </div>
+                  </td>
                   <td style={{ padding: "10px 10px" }}><span style={{ background: pc.bg, color: pc.text, border: `1px solid ${pc.border}`, padding: "2px 10px", borderRadius: "20px", fontSize: "12px" }}>{m.position}</span></td>
                   <td style={{ padding: "10px 10px", color: T.text }}>{(m.growthPower || 0).toLocaleString()}</td>
                   <td style={{ padding: "10px 10px", color: T.goldHi }}>x{(m.multiplier || 1).toFixed(2)}</td>
@@ -709,10 +731,35 @@ const addPoints = async (member, amount) => {
               <label key={key} style={labelStyle}><span style={{ color: T.textSub, fontSize: "12px" }}>{label}</span><select value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} style={inputStyle}>{opts.map(o => <option key={o}>{o}</option>)}</select></label>
             ))}
             <label style={{ ...labelStyle, gridColumn: "1 / -1" }}><span style={{ color: T.textSub, fontSize: "12px" }}>Comment</span><input type="text" value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} style={inputStyle} /></label>
+
+            {/* Class Image Upload */}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ color: T.textSub, fontSize: "12px", marginBottom: "8px", fontWeight: "600" }}>Class Image</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                {form.class_image_url
+                  ? <img src={form.class_image_url} alt="class" style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover", border: `1px solid ${T.border}` }} />
+                  : <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: T.bg3, border: `1px dashed ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>⚔️</div>
+                }
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
+                  <input ref={classImgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={uploadClassImage} />
+                  <button type="button" onClick={() => classImgRef.current?.click()} disabled={uploadingClassImg} style={{ ...btn("purple"), fontSize: "12px", padding: "7px 14px", opacity: uploadingClassImg ? 0.6 : 1 }}>
+                    {uploadingClassImg ? "⏳ Uploading…" : "🖼️ Upload Class Image"}
+                  </button>
+                  <input type="text" value={form.class_image_url} onChange={e => setForm({ ...form, class_image_url: e.target.value })} placeholder="Or paste image URL here" style={{ ...inputStyle, fontSize: "11px" }} />
+                  {form.class_image_url && (
+                    <button type="button" onClick={() => setForm(f => ({ ...f, class_image_url: "" }))} style={{ ...btn("red"), fontSize: "11px", padding: "4px 10px" }}>✕ Remove Image</button>
+                  )}
+                </div>
+              </div>
+              <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "6px" }}>
+                💡 Supabase SQL needed: <code style={{ color: T.blueHi, background: T.bg0, padding: "1px 5px", borderRadius: "3px" }}>ALTER TABLE members ADD COLUMN IF NOT EXISTS class_image_url text;</code>
+                {" "}and create a storage bucket named <code style={{ color: T.blueHi, background: T.bg0, padding: "1px 5px", borderRadius: "3px" }}>class-images</code> (public).
+              </div>
+            </div>
           </div>
           <div style={{ display: "flex", gap: "8px", marginTop: "18px", justifyContent: "flex-end" }}>
             <button onClick={() => setShowModal(false)} style={btn("gray")}>Cancel</button>
-            <button onClick={handleSave} style={btn("gold")}>Save</button>
+            <button onClick={handleSave} disabled={uploadingClassImg} style={{ ...btn("gold"), opacity: uploadingClassImg ? 0.6 : 1 }}>Save</button>
           </div>
         </Modal>
       )}
@@ -1148,11 +1195,34 @@ function AttendanceTab({ role, currentUser }) {
                 </button>
               </div>
               <div style={{ color: T.textMuted, fontSize: "11px", marginTop: "10px" }}>Share this in Discord or in-game chat. Only members who see it can check in.</div>
+
+              {/* Leader self check-in */}
+              {!isAlreadyCheckedIn && !codeSuccess && (
+                <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: `1px solid ${T.green}33` }}>
+                  <div style={{ color: T.textSub, fontSize: "12px", marginBottom: "8px" }}>Also check yourself in:</div>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      value={codeInput}
+                      onChange={e => { setCodeInput(e.target.value.toUpperCase()); setCodeError(""); }}
+                      onKeyDown={e => e.key === "Enter" && submitCode()}
+                      maxLength={6}
+                      placeholder={activeSession.session_code || "Enter code"}
+                      style={{ ...inputStyle, width: "160px", letterSpacing: "0.2em", fontSize: "16px", fontWeight: "700", fontFamily: "monospace", textTransform: "uppercase" }}
+                    />
+                    <button onClick={submitCode} style={{ ...btn("green"), fontSize: "13px", padding: "8px 18px" }}>✅ Check In</button>
+                    <button onClick={async () => { await checkIn(currentUser.display, activeSession.id, currentUser.display); setCodeSuccess(true); }} style={{ ...btn("blue"), fontSize: "13px", padding: "8px 18px" }}>Mark Me Present</button>
+                  </div>
+                  {codeError && <div style={{ color: T.redHi, fontSize: "13px", marginTop: "8px" }}>{codeError}</div>}
+                </div>
+              )}
+              {(isAlreadyCheckedIn || codeSuccess) && (
+                <div style={{ marginTop: "10px", color: T.greenHi, fontSize: "13px", fontWeight: "600" }}>✅ You are checked in for this session.</div>
+              )}
             </div>
           )}
 
-          {/* MEMBER view — code input box */}
-          {!isAlreadyCheckedIn && !codeSuccess ? (
+          {/* MEMBER view — code input box (only for non-leaders; leaders have their own check-in above) */}
+          {!isLeader && (!isAlreadyCheckedIn && !codeSuccess ? (
             <div style={{ background: T.bg2, border: `1px solid ${T.borderHi}`, borderRadius: "12px", padding: "16px 20px" }}>
               <div style={{ color: T.text, fontWeight: "700", fontSize: "14px", marginBottom: "4px" }}>🟢 Session Active: {activeSession.name}</div>
               <div style={{ color: T.textMuted, fontSize: "12px", marginBottom: "14px" }}>Enter the code shared by your leader to mark yourself present.</div>
@@ -1177,7 +1247,7 @@ function AttendanceTab({ role, currentUser }) {
                 <div style={{ color: T.textSub, fontSize: "12px", marginTop: "2px" }}>Your attendance has been recorded.</div>
               </div>
             </div>
-          )}
+          ))}
         </div>
       ) : (
         <div style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "14px 18px", marginBottom: "20px", color: T.textMuted, fontSize: "14px" }}>
