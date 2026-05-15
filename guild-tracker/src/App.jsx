@@ -23,7 +23,7 @@ const ROLES = ["Admin","Leader","Elder","Member","Recruit"];
 function getEffectiveRole(user) {
   if (!user) return null;
   if (ADMIN_EMAIL && user.email === ADMIN_EMAIL) return "Admin";
-  return user.role || "Recruit";
+  return user.role || "Admin";
 }
 
 function roleRank(role) {
