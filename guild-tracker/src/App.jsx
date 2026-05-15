@@ -89,10 +89,10 @@ const INIT_AUCTION_ITEMS = [
 // ── Event types with default points ─────────────────────────────────────────
 const EVENT_TYPES = [
   { id:"sindri",    label:"Sindri Battle",    icon:"⚔️",  defaultPoints:10, color:"#f59e0b" },
-  { id:"server",    label:"Server Battle",    icon:"🌐",  defaultPoints:2,  color:"#60a5fa" },
-  { id:"fieldboss", label:"Field Boss",       icon:"👹",  defaultPoints:1,  color:"#f87171" },
-  { id:"sanctuary", label:"Guild Sanctuary",  icon:"🏛️",  defaultPoints:3,  color:"#34d399" },
-  { id:"ymir",      label:"Ymir Cup",         icon:"🏆",  defaultPoints:0,  color:"#a78bfa" },
+  { id:"server",    label:"Server Battle",    icon:"🌐",  defaultPoints:5,  color:"#60a5fa" },
+  { id:"fieldboss", label:"Field Boss",       icon:"👹",  defaultPoints:5,  color:"#f87171" },
+  { id:"sanctuary", label:"Guild Sanctuary",  icon:"🏛️",  defaultPoints:5,  color:"#34d399" },
+  { id:"ymir",      label:"Ymir Cup",         icon:"🏆",  defaultPoints:5,  color:"#a78bfa" },
 ];
 
 // ── Field Boss schedule (from game) ─────────────────────────────────────────
@@ -294,11 +294,21 @@ export default function App() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user && mounted) {
-          const { data: profile } = await supabase
-            .from("members").select("*").eq("email", session.user.email).single();
+          // session.user.email is the normalized @rampageguild.gg form; look up by both
+          const authMail = session.user.email;
+          let profile = null;
+          const { data: p1 } = await supabase.from("members").select("*").eq("email", authMail).single();
+          if (p1) { profile = p1; }
+          else {
+            // Try the guild email (strip @rampageguild.gg and search by name prefix)
+            const prefix = authMail.split("@")[0];
+            const { data: p2 } = await supabase.from("members").select("*").ilike("email", `${prefix}@%`).single();
+            if (p2) profile = p2;
+          }
           const role = profile?.role || "Recruit";
-          const name = profile?.name || session.user.email.split("@")[0].toUpperCase();
-          setCurrentUser({ id: session.user.id, email: session.user.email, role, name, points: profile?.points || 0 });
+          const name = profile?.name || authMail.split("@")[0].toUpperCase();
+          const displayEmail = profile?.email || authMail;
+          setCurrentUser({ id: session.user.id, email: displayEmail, role, name, points: profile?.points || 0 });
         }
       } catch {}
       if(mounted) setSessionRestored(true);
@@ -406,16 +416,28 @@ export default function App() {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const handleLogin = async()=>{
     setAuthLoading(true); setAuthError("");
+    const rawEmail = loginForm.email.trim().toLowerCase();
+    // Normalize: if user types nokia232@rampage.gg, we stored it as nokia232@rampageguild.gg in Supabase auth
+    const authEmail = rawEmail.includes("@")
+      ? rawEmail.replace(/@.+$/, "@rampageguild.gg")
+      : `${rawEmail}@rampageguild.gg`;
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email: loginForm.email, password: loginForm.password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: loginForm.password });
       if (error) { setAuthError(error.message); setAuthLoading(false); return; }
-      const { data: profile } = await supabase.from("members").select("*").eq("email", loginForm.email).single();
+      // Look up profile by guild email (original) OR auth email
+      let profile = null;
+      const { data: p1 } = await supabase.from("members").select("*").eq("email", rawEmail).single();
+      if (p1) { profile = p1; }
+      else {
+        const { data: p2 } = await supabase.from("members").select("*").eq("email", authEmail).single();
+        if (p2) profile = p2;
+      }
       const role = profile?.role || "Recruit";
-      const name = profile?.name || loginForm.email.split("@")[0].toUpperCase();
-      setCurrentUser({ id: data.user.id, email: loginForm.email, role, name, points: profile?.points || 0 });
+      const name = profile?.name || rawEmail.split("@")[0].toUpperCase();
+      setCurrentUser({ id: data.user.id, email: rawEmail, role, name, points: profile?.points || 0 });
     } catch(e) {
       const local = lsGet("rampageMembers",[]);
-      const found = local.find(m=>m.email===loginForm.email);
+      const found = local.find(m=>m.email===rawEmail || m.email===authEmail);
       if (found && loginForm.password.length >= 6) {
         setCurrentUser({id:found.id, email:found.email, role:found.role, name:found.name, points:found.points||0});
       } else {
@@ -430,16 +452,22 @@ export default function App() {
     if (!regForm.name.trim()) { setAuthError("Display name is required"); setAuthLoading(false); return; }
     if (regForm.password !== regForm.confirmPassword) { setAuthError("Passwords do not match"); setAuthLoading(false); return; }
     if (regForm.password.length < 6) { setAuthError("Password must be at least 6 characters"); setAuthLoading(false); return; }
+    // Normalize email for Supabase — guild emails like @rampage.gg aren't real domains,
+    // so we convert them to a supabase-safe format while keeping the guild email in the profile.
+    const guildEmail = regForm.email.trim().toLowerCase();
+    const authEmail = guildEmail.includes("@")
+      ? guildEmail.replace(/@.+$/, "@rampageguild.gg")  // replace domain with valid one for Supabase auth
+      : `${guildEmail}@rampageguild.gg`;
     try {
       const { data, error } = await supabase.auth.signUp({
-        email: regForm.email, password: regForm.password,
+        email: authEmail, password: regForm.password,
         options: { data: { display_name: regForm.name.toUpperCase(), cls: regForm.cls } }
       });
       if (error) { setAuthError(error.message); setAuthLoading(false); return; }
       const newM = {
         id: data.user?.id || String(Date.now()),
         name: regForm.name.toUpperCase(), role: "Recruit", cls: regForm.cls,
-        points: 0, status: "Active", email: regForm.email,
+        points: 0, status: "Active", email: guildEmail, // store their original guild email
         joined: new Date().toLocaleDateString("en-US",{month:"short",year:"numeric"}),
         created_at: new Date().toISOString(),
       };
@@ -450,12 +478,12 @@ export default function App() {
       } else {
         setMembers(prev=>[...prev, newM]);
       }
-      setCurrentUser({ id:newM.id, email:regForm.email, role:"Recruit", name:newM.name, points:0 });
+      setCurrentUser({ id:newM.id, email:guildEmail, role:"Recruit", name:newM.name, points:0 });
     } catch(e) {
-      const newM = { id: String(Date.now()), name: regForm.name.toUpperCase(), role: "Recruit", cls: regForm.cls, points: 0, status: "Active", email: regForm.email };
+      const newM = { id: String(Date.now()), name: regForm.name.toUpperCase(), role: "Recruit", cls: regForm.cls, points: 0, status: "Active", email: guildEmail };
       setMembers(prev=>[...prev, newM]);
       lsSet("rampageMembers", [...lsGet("rampageMembers",[]), newM]);
-      setCurrentUser({ id:newM.id, email:regForm.email, role:"Recruit", name:newM.name, points:0 });
+      setCurrentUser({ id:newM.id, email:guildEmail, role:"Recruit", name:newM.name, points:0 });
     }
     setAuthLoading(false);
   };
@@ -2405,7 +2433,7 @@ function AuthScreen({ page, setPage, loginForm, setLoginForm, regForm, setRegFor
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               <div>
                 <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:7,textTransform:"uppercase",letterSpacing:"0.09em"}}>Email</label>
-                <input className="auth-input" type="email" placeholder="your@email.com" value={loginForm.email} onChange={e=>setLoginForm(p=>({...p,email:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&onLogin()} />
+                <input className="auth-input" type="text" placeholder="e.g. nokia232@rampage.gg" value={loginForm.email} onChange={e=>setLoginForm(p=>({...p,email:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&onLogin()} />
               </div>
               <div>
                 <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:7,textTransform:"uppercase",letterSpacing:"0.09em"}}>Password</label>
@@ -2430,7 +2458,7 @@ function AuthScreen({ page, setPage, loginForm, setLoginForm, regForm, setRegFor
               </div>
               <div>
                 <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:7,textTransform:"uppercase",letterSpacing:"0.09em"}}>Email</label>
-                <input className="auth-input" type="email" placeholder="your@email.com" value={regForm.email} onChange={e=>setRegForm(p=>({...p,email:e.target.value}))} />
+                <input className="auth-input" type="text" placeholder="e.g. nokia232@rampage.gg" value={regForm.email} onChange={e=>setRegForm(p=>({...p,email:e.target.value}))} />
               </div>
               <div>
                 <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:7,textTransform:"uppercase",letterSpacing:"0.09em"}}>Class</label>
@@ -2452,7 +2480,8 @@ function AuthScreen({ page, setPage, loginForm, setLoginForm, regForm, setRegFor
                 style={{background:"linear-gradient(135deg,#0f766e,#14b8a6)",color:"#fff",marginTop:4,boxShadow:"0 6px 30px rgba(20,184,166,0.3)"}}>
                 {loading?"Creating account...":"Create Account →"}
               </button>
-              <p style={{textAlign:"center",color:"#3d5070",fontSize:11.5}}>New members join as <strong style={{color:"#a78bfa"}}>Recruit</strong> — Valiant will promote you.</p>
+              <p style={{textAlign:"center",color:"#3d5070",fontSize:11.5}}>Use any email — <strong style={{color:"#60a5fa"}}>@rampage.gg</strong> works fine ✓</p>
+              <p style={{textAlign:"center",color:"#3d5070",fontSize:11}}>New members join as <strong style={{color:"#a78bfa"}}>Recruit</strong> — Valiant will promote you.</p>
             </div>
           )}
         </div>
