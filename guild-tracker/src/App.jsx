@@ -979,7 +979,7 @@ export default function App() {
                             <div style={{fontSize:9.5,color:"#3d5070",letterSpacing:"0.07em"}}>PTS</div>
                           </div>
                           {canManage&&(
-                            <div style={{display:"flex",gap:6"}}>
+                            <div style={{display:"flex",gap:6}}>
                               <button className="btn" onClick={()=>setMarkEventId(isMarking?null:ev.id)}
                                 style={{background:isMarking?"rgba(99,102,241,0.2)":"rgba(255,255,255,0.06)",border:`1px solid ${isMarking?"rgba(99,102,241,0.4)":"rgba(255,255,255,0.1)"}`,color:isMarking?"#a5b4fc":"#64748b",padding:"8px 14px",fontSize:12}}>
                                 {isMarking?"✅ Done":"📋 Mark"}
