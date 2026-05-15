@@ -183,7 +183,7 @@ export default function App() {
         const local = lsGet("rampageMembers", []);
         // Ensure Valiant is always present as Leader
         if (!local.find(m=>m.name==="VALIANT")) {
-          local.unshift({id:"valiant-leader",name:"VALIANT",role:"Leader",cls:"Berserker",points:0,status:"Active",email:"valiant@rampage.gg"});
+          local.unshift({id:"valiant-leader",name:"VALIANT",role:"Leader",cls:"Skald",points:0,status:"Active",email:"valiant@rampage.gg"});
         }
         setMembers(local);
       } else {
@@ -192,7 +192,7 @@ export default function App() {
     } catch {
       const local = lsGet("rampageMembers", []);
       if (!local.find(m=>m.name==="VALIANT")) {
-        local.unshift({id:"valiant-leader",name:"VALIANT",role:"Leader",cls:"Berserker",points:0,status:"Active",email:"valiant@rampage.gg"});
+        local.unshift({id:"valiant-leader",name:"VALIANT",role:"Leader",cls:"Skald",points:0,status:"Active",email:"valiant@rampage.gg"});
       }
       setMembers(local);
     }
