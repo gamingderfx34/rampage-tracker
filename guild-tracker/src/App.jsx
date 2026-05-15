@@ -169,7 +169,33 @@ export default function App() {
     },1000);
     return ()=>clearInterval(t);
   },[]);
-
+// ── Restore session on refresh ────────────────────────────────────────────
+  useEffect(()=>{
+    const restoreSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from("members")
+          .select("*")
+          .eq("email", session.user.email)
+          .single();
+        const role = profile?.role || "Recruit";
+        const name = profile?.name || session.user.email.split("@")[0].toUpperCase();
+        setCurrentUser({
+          id: session.user.id,
+          email: session.user.email,
+          role,
+          name,
+          points: profile?.points || 0
+        });
+      }
+    };
+    restoreSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) setCurrentUser(null);
+    });
+    return () => subscription.unsubscribe();
+  },[]);
   // ── Load members from Supabase ────────────────────────────────────────────
   useEffect(()=>{
     loadMembers();
