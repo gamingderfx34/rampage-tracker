@@ -18,12 +18,66 @@ function displayRole(user) {
 // ── Constants ───────────────────────────────────────────────────────────────
 const MOCK_LOGO = "https://mbalsusqtkbtoxuawjau.supabase.co/storage/v1/object/public/asset/RAMPAGE%20FOR%20APP.png";
 
-const DEFAULT_BOSSES = [
-  { id:1, name:"Cruel Outlaw Gand",  secs:0, minR:30, maxR:60, ch:"CH 1", color:"#f59e0b", image:null },
-  { id:2, name:"Gatekeeper Amot",    secs:0, minR:45, maxR:90, ch:"CH 2", color:"#60a5fa", image:null },
-  { id:3, name:"Destroyer Hawler",   secs:0, minR:30, maxR:60, ch:"CH 3", color:"#34d399", image:null },
-  { id:4, name:"Assulter Laudd",     secs:0, minR:30, maxR:60, ch:"CH 1", color:"#a78bfa", image:null },
+// ── Boss helper ──────────────────────────────────────────────────────────────
+// Each boss group has a "group" key: "live4" | "folkvang_normal" | "folkvang_interserver" | "canyon" | "lindwurm"
+// Channels are stored per-group. respawnSecs = editable respawn (hh:mm:ss shown)
+
+function makeBossId() { return Date.now() + Math.random(); }
+
+const DEFAULT_LIVE4 = [
+  { id:"l1a", name:"Cruel Outlaw Gand",  secs:0, elapsed:0, minR:30, maxR:90, channel:1, color:"#f59e0b", image:null, group:"live4" },
+  { id:"l1b", name:"Cruel Outlaw Gand",  secs:0, elapsed:0, minR:30, maxR:90, channel:2, color:"#f59e0b", image:null, group:"live4" },
+  { id:"l2a", name:"Gatekeeper Amot",    secs:0, elapsed:0, minR:30, maxR:90, channel:1, color:"#60a5fa", image:null, group:"live4" },
+  { id:"l2b", name:"Gatekeeper Amot",    secs:0, elapsed:0, minR:30, maxR:90, channel:2, color:"#60a5fa", image:null, group:"live4" },
+  { id:"l3a", name:"Destroyer Hawler",   secs:0, elapsed:0, minR:30, maxR:90, channel:1, color:"#34d399", image:null, group:"live4" },
+  { id:"l3b", name:"Destroyer Hawler",   secs:0, elapsed:0, minR:30, maxR:90, channel:2, color:"#34d399", image:null, group:"live4" },
+  { id:"l4a", name:"Assulter Laudd",     secs:0, elapsed:0, minR:30, maxR:90, channel:1, color:"#a78bfa", image:null, group:"live4" },
+  { id:"l4b", name:"Assulter Laudd",     secs:0, elapsed:0, minR:30, maxR:90, channel:2, color:"#a78bfa", image:null, group:"live4" },
 ];
+
+// FOLKVANG floors: 1F-5F, Normal + Interserver
+const FOLKVANG_FLOORS = ["1F","2F","3F","4F","5F"];
+function mkFolkvang(type, color) {
+  return FOLKVANG_FLOORS.map((fl,i)=>({
+    id:`fv_${type}_${fl}`, name:`Folkvang ${fl}`, floor:fl, type, secs:0, elapsed:0,
+    respawnSecs:6300, // 1h45m default
+    channel:1, color, image:null, group:`folkvang_${type}`,
+  }));
+}
+const DEFAULT_FOLKVANG_NORMAL = mkFolkvang("normal","#f97316");
+const DEFAULT_FOLKVANG_INTERSERVER = mkFolkvang("interserver","#e879f9");
+
+// Canyon of Nidavellir — 3 bosses, interserver, 3 channels default
+const CANYON_BOSSES_DEF = [
+  { id:"can1", name:"Lv.65 Darkening Varulf Honcho",         color:"#fb923c" },
+  { id:"can2", name:"Lv.67 Darkening Ground Jotunn Captain", color:"#f59e0b" },
+  { id:"can3", name:"Lv.69 Darkening Frost Jotunn Captain",  color:"#60a5fa" },
+];
+function mkCanyon() {
+  let arr=[];
+  CANYON_BOSSES_DEF.forEach(b=>{
+    [1,2,3].forEach(ch=>arr.push({...b,id:`${b.id}_ch${ch}`,secs:0,elapsed:0,respawnSecs:6300,channel:ch,image:null,group:"canyon"}));
+  });
+  return arr;
+}
+const DEFAULT_CANYON = mkCanyon();
+
+// Lindwurm Cave — 3 bosses, 2 channels default
+const LINDWURM_BOSSES_DEF = [
+  { id:"lw1", name:"Lv.76 Fierce Parasitic Mushroom Honcho", color:"#4ade80" },
+  { id:"lw2", name:"Lv.77 Elder Troll Conquering Captain",   color:"#34d399" },
+  { id:"lw3", name:"Lv.78 Cruel Harpy Honcho",               color:"#2dd4bf" },
+];
+function mkLindwurm() {
+  let arr=[];
+  LINDWURM_BOSSES_DEF.forEach(b=>{
+    [1,2].forEach(ch=>arr.push({...b,id:`${b.id}_ch${ch}`,secs:0,elapsed:0,respawnSecs:6300,channel:ch,image:null,group:"lindwurm"}));
+  });
+  return arr;
+}
+const DEFAULT_LINDWURM = mkLindwurm();
+
+const DEFAULT_BOSSES = [...DEFAULT_LIVE4];
 
 const INIT_AUCTION_ITEMS = [
   { id:1, name:"Shadowfang Blade",   rarity:"Legendary", minBid:5000, currentBid:0, highBidder:null, bids:[], locked:false, winner:null, claimed:false, image:"⚔️", endTime: Date.now() + 3600000 },
@@ -145,6 +199,15 @@ export default function App() {
   const [uploadMsg, setUploadMsg]     = useState("");
   const [members, setMembers]         = useState([]);
   const [bosses, setBosses]           = useState(()=>lsGet("rampageBosses", DEFAULT_BOSSES));
+  const [folkvangNormal, setFolkvangNormal]         = useState(()=>lsGet("rampageFolkvangN", DEFAULT_FOLKVANG_NORMAL));
+  const [folkvangInterserver, setFolkvangInterserver] = useState(()=>lsGet("rampageFolkvangI", DEFAULT_FOLKVANG_INTERSERVER));
+  const [canyonBosses, setCanyonBosses]             = useState(()=>lsGet("rampageCanyon", DEFAULT_CANYON));
+  const [lindwurmBosses, setLindwurmBosses]         = useState(()=>lsGet("rampageLindwurm", DEFAULT_LINDWURM));
+  const [bossTimerModal, setBossTimerModal]         = useState(null); // {id, group}
+  const [timerHH, setTimerHH]   = useState("0");
+  const [timerMM, setTimerMM]   = useState("0");
+  const [timerSS, setTimerSS]   = useState("0");
+  const [addChannelModal, setAddChannelModal]       = useState(null); // group name
   const [attendance, setAttendance]   = useState([]);
   const [auctionItems, setAuctionItems] = useState(()=>lsGet("rampageAuction", INIT_AUCTION_ITEMS));
   const [winners, setWinners]         = useState(()=>lsGet("rampageWinners", []));
@@ -185,6 +248,10 @@ export default function App() {
 
   // ── Persist to localStorage ──────────────────────────────────────────────
   useEffect(()=>{ lsSet("rampageBosses", bosses); }, [bosses]);
+  useEffect(()=>{ lsSet("rampageFolkvangN", folkvangNormal); }, [folkvangNormal]);
+  useEffect(()=>{ lsSet("rampageFolkvangI", folkvangInterserver); }, [folkvangInterserver]);
+  useEffect(()=>{ lsSet("rampageCanyon", canyonBosses); }, [canyonBosses]);
+  useEffect(()=>{ lsSet("rampageLindwurm", lindwurmBosses); }, [lindwurmBosses]);
   useEffect(()=>{ lsSet("rampageAuction", auctionItems); }, [auctionItems]);
   useEffect(()=>{ lsSet("rampageWinners", winners); }, [winners]);
   useEffect(()=>{ lsSet("rampageEvents", events); }, [events]);
@@ -202,7 +269,16 @@ export default function App() {
   // ── Update timestamp every second ────────────────────────────────────────
   useEffect(()=>{
     const t = setInterval(()=>{
-      setBosses(prev=>prev.map(b=>({...b,secs:Math.max(0,b.secs-1)})));
+      const tickBoss = b => {
+        if(b.secs > 0) return {...b, secs:b.secs-1, elapsed:0};
+        // boss is alive - count elapsed seconds since it spawned
+        return {...b, secs:0, elapsed:(b.elapsed||0)+1};
+      };
+      setBosses(prev=>prev.map(tickBoss));
+      setFolkvangNormal(prev=>prev.map(tickBoss));
+      setFolkvangInterserver(prev=>prev.map(tickBoss));
+      setCanyonBosses(prev=>prev.map(tickBoss));
+      setLindwurmBosses(prev=>prev.map(tickBoss));
       setNow(Date.now());
       lsSet("rampageBossTimestamp", Date.now());
     },1000);
@@ -210,11 +286,13 @@ export default function App() {
   },[]);
 
   // ── Restore session on refresh ────────────────────────────────────────────
+  const [sessionRestored, setSessionRestored] = useState(false);
   useEffect(()=>{
+    let mounted = true;
     const restoreSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
+        if (session?.user && mounted) {
           const { data: profile } = await supabase
             .from("members").select("*").eq("email", session.user.email).single();
           const role = profile?.role || "Recruit";
@@ -222,12 +300,14 @@ export default function App() {
           setCurrentUser({ id: session.user.id, email: session.user.email, role, name, points: profile?.points || 0 });
         }
       } catch {}
+      if(mounted) setSessionRestored(true);
     };
     restoreSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) setCurrentUser(null);
+      // Only clear the user after session has been fully restored to avoid flash logout
+      if (!session && sessionRestored) setCurrentUser(null);
     });
-    return () => subscription.unsubscribe();
+    return () => { mounted=false; subscription.unsubscribe(); };
   },[]);
 
   // ── Load members from Supabase ────────────────────────────────────────────
@@ -399,30 +479,88 @@ export default function App() {
   // ── Boss image upload ──────────────────────────────────────────────────────
   const handleBossImageUpload = (e)=>{
     const file = e.target.files?.[0]; if(!file||!bossImageModal) return;
-    const reader = new FileReader();
-    reader.onload = ev=>{
-      setBosses(prev=>prev.map(b=>b.id===bossImageModal?{...b,image:ev.target.result}:b));
-      setBossImageModal(null); showToast("🖼️ Boss image updated!");
-    };
-    reader.readAsDataURL(file);
+    handleBossImageUploadGroup(file, bossImageModal.id, bossImageModal.group);
+  };
+
+  // ── Boss group setter helper ──────────────────────────────────────────────
+  const getSetterByGroup = (group) => {
+    if(group==="folkvang_normal") return setFolkvangNormal;
+    if(group==="folkvang_interserver") return setFolkvangInterserver;
+    if(group==="canyon") return setCanyonBosses;
+    if(group==="lindwurm") return setLindwurmBosses;
+    return setBosses;
   };
 
   // ── Boss actions ───────────────────────────────────────────────────────────
-  const handleMarkKilled = (id)=>{
+  const handleMarkKilledGroup = (id, group)=>{
     setKillFlash(id); setTimeout(()=>setKillFlash(null),700);
-    setBosses(prev=>prev.map(b=>{
+    const setter = getSetterByGroup(group);
+    setter(prev=>prev.map(b=>{
       if(b.id!==id) return b;
-      const secs = Math.floor((b.minR+Math.random()*(b.maxR-b.minR))*60);
-      return {...b,secs};
+      // For live4 bosses use minR/maxR; for others use respawnSecs
+      const secs = b.respawnSecs != null
+        ? b.respawnSecs
+        : Math.floor((b.minR + Math.random()*(b.maxR-b.minR))*60);
+      return {...b, secs, elapsed:0};
     }));
     if(discordConnected) showToast("📢 Discord notified: Boss killed!","info");
   };
-  const handleResetToZero = (id)=>{ setKillFlash(id); setTimeout(()=>setKillFlash(null),700); setBosses(prev=>prev.map(b=>b.id===id?{...b,secs:0}:b)); };
+
+  const handleMarkKilled = (id)=> handleMarkKilledGroup(id, "live4");
+
+  const handleResetToZero = (id, group="live4")=>{
+    setKillFlash(id); setTimeout(()=>setKillFlash(null),700);
+    getSetterByGroup(group)(prev=>prev.map(b=>b.id===id?{...b,secs:0,elapsed:0}:b));
+  };
+
   const handleSetManual = ()=>{
     const mins = parseFloat(manualMins);
     if(isNaN(mins)||mins<0) return;
-    setBosses(prev=>prev.map(b=>b.id===bossModal?{...b,secs:Math.floor(mins*60)}:b));
+    setBosses(prev=>prev.map(b=>b.id===bossModal?{...b,secs:Math.floor(mins*60),elapsed:0}:b));
     setBossModal(null); setManualMins("");
+  };
+
+  // New HH:MM:SS timer setter for all boss groups
+  const handleSetTimerHMS = ()=>{
+    if(!bossTimerModal) return;
+    const {id,group} = bossTimerModal;
+    const totalSecs = (parseInt(timerHH)||0)*3600 + (parseInt(timerMM)||0)*60 + (parseInt(timerSS)||0);
+    getSetterByGroup(group)(prev=>prev.map(b=>b.id===id?{...b,secs:totalSecs,elapsed:0}:b));
+    setBossTimerModal(null);
+  };
+
+  // Update respawn time for a boss
+  const handleSetRespawnTime = (id, group, secs)=>{
+    getSetterByGroup(group)(prev=>prev.map(b=>b.id===id?{...b,respawnSecs:secs}:b));
+  };
+
+  // Add channel for a boss group
+  const handleAddChannel = (group, bossBaseName, baseColor)=>{
+    const setter = getSetterByGroup(group);
+    setter(prev=>{
+      const maxCh = prev.filter(b=>b.name===bossBaseName).reduce((m,b)=>Math.max(m,b.channel),0);
+      const newCh = maxCh+1;
+      const template = prev.find(b=>b.name===bossBaseName);
+      if(!template) return prev;
+      return [...prev, {...template, id:`${group}_${bossBaseName}_ch${newCh}_${Date.now()}`, channel:newCh, secs:0, elapsed:0}];
+    });
+    showToast(`✅ Channel ${group} added!`);
+  };
+
+  // Remove a channel
+  const handleRemoveChannel = (id, group)=>{
+    getSetterByGroup(group)(prev=>prev.filter(b=>b.id!==id));
+    showToast("🗑️ Channel removed","warn");
+  };
+
+  // Update boss image for any group
+  const handleBossImageUploadGroup = (file, id, group)=>{
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      getSetterByGroup(group)(prev=>prev.map(b=>b.id===id?{...b,image:ev.target.result}:b));
+      setBossImageModal(null); showToast("🖼️ Boss image updated!");
+    };
+    reader.readAsDataURL(file);
   };
 
   // ── Members ───────────────────────────────────────────────────────────────
@@ -982,11 +1120,11 @@ export default function App() {
             <div className="page">
               <div style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:12,padding:"10px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:10,fontSize:12,color:"#34d399"}}>
                 <span>⏱</span>
-                <span>Boss timers <strong>persist across sessions</strong> — they continue counting down even after refresh.</span>
+                <span>Boss timers <strong>persist across sessions</strong> — they continue counting down even after refresh. Elapsed time shown when boss is LIVE.</span>
               </div>
 
               {/* Field Boss Schedule */}
-              <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:"18px 20px",marginBottom:18}}>
+              <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:"18px 20px",marginBottom:22}}>
                 <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:16,fontWeight:700,color:"#f87171",marginBottom:12,letterSpacing:"0.04em"}}>👹 Field Boss Schedule (UTC+8)</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
                   {FIELD_BOSS_SCHEDULE.map((b,i)=>{
@@ -1002,43 +1140,97 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:18}}>
-                {bosses.map(b=>{
-                  const st=bossStatus(b.secs);
-                  const bs=BOSS_STATUS_STYLE[st];
-                  return(
-                    <div key={b.id} className={`boss-card${killFlash===b.id?" kill-flash":""}`}
-                      style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:18,padding:"22px 22px 18px",position:"relative",overflow:"hidden"}}>
-                      <div style={{position:"absolute",left:0,top:0,bottom:0,width:4,background:b.color,borderRadius:"4px 0 0 4px"}} />
-                      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:13}}>
-                        <div className="boss-img-upload" onClick={()=>canManage&&(setBossImageModal(b.id),bossImgRef.current?.click())}
-                          style={{width:78,height:78,borderRadius:14,background:b.color+"22",border:`2px solid ${b.color}44`,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0,position:"relative",cursor:canManage?"pointer":"default"}}>
-                          {b.image ? <img src={b.image} alt={b.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : <span style={{fontSize:32}}>👹</span>}
-                          {canManage&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity 0.2s"}} className="boss-img-ov"><span style={{fontSize:18}}>📷</span></div>}
-                        </div>
-                        <div>
-                          <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",letterSpacing:"0.02em"}}>{b.name}</div>
-                          <div style={{fontSize:11.5,color:"#3d5070",marginTop:3}}>{b.ch} · Respawn {b.minR}–{b.maxR} min</div>
-                          <span style={{display:"inline-flex",alignItems:"center",padding:"3px 10px",borderRadius:7,background:bs.bg,color:bs.color,border:`1px solid ${bs.border}`,fontSize:11,fontWeight:700,marginTop:5}}>{st}</span>
-                        </div>
-                      </div>
-                      <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:52,fontWeight:700,color:b.color,letterSpacing:"0.06em",lineHeight:1,marginBottom:18,textAlign:"center"}}>
-                        {fmtSecs(b.secs)}
-                      </div>
-                      {canManage&&<>
-                        <button className="kill-btn" onClick={()=>handleMarkKilled(b.id)} style={{background:`${b.color}20`,border:`1px solid ${b.color}45`,color:b.color,marginBottom:9}}>
-                          ☠️ Mark Killed — start respawn timer
-                        </button>
-                        <div style={{display:"flex",gap:9}}>
-                          <button className="ghost-btn" onClick={()=>handleResetToZero(b.id)} style={{flex:1}}>🔴 Set LIVE</button>
-                          <button className="ghost-btn" onClick={()=>{setBossModal(b.id);setManualMins("");}} style={{flex:1}}>⏱ Set timer</button>
-                        </div>
-                      </>}
-                      {!canManage&&<div style={{textAlign:"center",color:"#3d5070",fontSize:11,marginTop:8}}>👀 View only</div>}
-                    </div>
-                  );
-                })}
-              </div>
+              {/* ── LIVE 4 BOSSES ── */}
+              <BossGroupPanel
+                title="⚔️ LIVE WORLD BOSSES"
+                subtitle="CH 1 & CH 2 — Respawn 30–90 min (elapsed timer when alive)"
+                color="#f59e0b"
+                bosses={bosses}
+                groupKey="live4"
+                canManage={canManage}
+                killFlash={killFlash}
+                onKill={(id)=>handleMarkKilledGroup(id,"live4")}
+                onReset={(id)=>handleResetToZero(id,"live4")}
+                onSetTimer={(id)=>{setBossTimerModal({id,group:"live4"});setTimerHH("0");setTimerMM("0");setTimerSS("0");}}
+                onImage={(id)=>{setBossImageModal({id,group:"live4"});bossImgRef.current?.click();}}
+                onAddChannel={(bossName,color)=>handleAddChannel("live4",bossName,color)}
+                onRemoveChannel={(id)=>handleRemoveChannel(id,"live4")}
+                showRespawnEdit={false}
+              />
+
+              {/* ── FOLKVANG NORMAL ── */}
+              <BossGroupPanel
+                title="🏔️ FOLKVANG BOSS — Normal"
+                subtitle="5 Floors (1F–5F) · Normal server"
+                color="#f97316"
+                bosses={folkvangNormal}
+                groupKey="folkvang_normal"
+                canManage={canManage}
+                killFlash={killFlash}
+                onKill={(id)=>handleMarkKilledGroup(id,"folkvang_normal")}
+                onReset={(id)=>handleResetToZero(id,"folkvang_normal")}
+                onSetTimer={(id)=>{setBossTimerModal({id,group:"folkvang_normal"});setTimerHH("0");setTimerMM("0");setTimerSS("0");}}
+                onImage={(id)=>{setBossImageModal({id,group:"folkvang_normal"});bossImgRef.current?.click();}}
+                onRespawnEdit={(id,secs)=>handleSetRespawnTime(id,"folkvang_normal",secs)}
+                showRespawnEdit={true}
+                floorLabels={true}
+              />
+
+              {/* ── FOLKVANG INTERSERVER ── */}
+              <BossGroupPanel
+                title="🌐 FOLKVANG BOSS — Interserver"
+                subtitle="5 Floors (1F–5F) · Interserver"
+                color="#e879f9"
+                bosses={folkvangInterserver}
+                groupKey="folkvang_interserver"
+                canManage={canManage}
+                killFlash={killFlash}
+                onKill={(id)=>handleMarkKilledGroup(id,"folkvang_interserver")}
+                onReset={(id)=>handleResetToZero(id,"folkvang_interserver")}
+                onSetTimer={(id)=>{setBossTimerModal({id,group:"folkvang_interserver"});setTimerHH("0");setTimerMM("0");setTimerSS("0");}}
+                onImage={(id)=>{setBossImageModal({id,group:"folkvang_interserver"});bossImgRef.current?.click();}}
+                onRespawnEdit={(id,secs)=>handleSetRespawnTime(id,"folkvang_interserver",secs)}
+                showRespawnEdit={true}
+                floorLabels={true}
+              />
+
+              {/* ── CANYON OF NIDAVELLIR ── */}
+              <BossGroupPanel
+                title="🏜️ CANYON OF NIDAVELLIR — Interserver"
+                subtitle="3 Bosses · 3 Channels · Interserver only"
+                color="#fb923c"
+                bosses={canyonBosses}
+                groupKey="canyon"
+                canManage={canManage}
+                killFlash={killFlash}
+                onKill={(id)=>handleMarkKilledGroup(id,"canyon")}
+                onReset={(id)=>handleResetToZero(id,"canyon")}
+                onSetTimer={(id)=>{setBossTimerModal({id,group:"canyon"});setTimerHH("0");setTimerMM("0");setTimerSS("0");}}
+                onImage={(id)=>{setBossImageModal({id,group:"canyon"});bossImgRef.current?.click();}}
+                onAddChannel={(bossName,color)=>handleAddChannel("canyon",bossName,color)}
+                onRemoveChannel={(id)=>handleRemoveChannel(id,"canyon")}
+                onRespawnEdit={(id,secs)=>handleSetRespawnTime(id,"canyon",secs)}
+                showRespawnEdit={true}
+              />
+
+              {/* ── LINDWURM CAVE ── */}
+              <BossGroupPanel
+                title="🦎 LINDWURM CAVE — Lv.65+ Required"
+                subtitle="Complete [Main] 26-2 · 3 Bosses · 2+ Channels"
+                color="#4ade80"
+                bosses={lindwurmBosses}
+                groupKey="lindwurm"
+                canManage={canManage}
+                killFlash={killFlash}
+                onKill={(id)=>handleMarkKilledGroup(id,"lindwurm")}
+                onReset={(id)=>handleResetToZero(id,"lindwurm")}
+                onSetTimer={(id)=>{setBossTimerModal({id,group:"lindwurm"});setTimerHH("0");setTimerMM("0");setTimerSS("0");}}
+                onImage={(id)=>{setBossImageModal({id,group:"lindwurm"});bossImgRef.current?.click();}}
+                onAddChannel={(bossName,color)=>handleAddChannel("lindwurm",bossName,color)}
+                onRemoveChannel={(id)=>handleRemoveChannel(id,"lindwurm")}
+                onRespawnEdit={(id,secs)=>handleSetRespawnTime(id,"lindwurm",secs)}
+                showRespawnEdit={true}
+              />
             </div>
           )}
 
@@ -1741,7 +1933,36 @@ export default function App() {
         </div>
       )}
 
-      {/* Boss Timer Modal */}
+      {/* Boss Timer Modal — HH:MM:SS */}
+      {bossTimerModal&&(
+        <div onClick={()=>setBossTimerModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}
+            style={{background:"#0a0c18",border:"1px solid rgba(255,255,255,0.1)",borderRadius:22,padding:"30px 32px",width:380,boxShadow:"0 32px 100px rgba(0,0,0,0.9)"}}>
+            <h3 style={{fontFamily:"'Rajdhani',sans-serif",fontSize:21,fontWeight:700,color:"#f1f5f9",marginBottom:6,letterSpacing:"0.04em"}}>⏱ Set Respawn Timer</h3>
+            <p style={{color:"#3d5070",fontSize:12,marginBottom:20}}>Set time remaining (HH:MM:SS) — like using Ctrl+Shift+: in Excel</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:18}}>
+              {[{label:"Hours",val:timerHH,set:setTimerHH},{label:"Minutes",val:timerMM,set:setTimerMM},{label:"Seconds",val:timerSS,set:setTimerSS}].map(f=>(
+                <div key={f.label}>
+                  <label style={{display:"block",color:"#3d5070",fontSize:10,fontWeight:700,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.08em"}}>{f.label}</label>
+                  <input className="dark-input" type="number" min="0" max={f.label==="Hours"?99:59} value={f.val}
+                    onChange={e=>f.set(e.target.value)} style={{textAlign:"center",fontSize:20,fontFamily:"'Rajdhani',sans-serif",fontWeight:700}} />
+                </div>
+              ))}
+            </div>
+            <div style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px",textAlign:"center",marginBottom:18}}>
+              <span style={{fontFamily:"'Rajdhani',sans-serif",fontSize:32,fontWeight:700,color:"#60a5fa"}}>
+                {String(parseInt(timerHH)||0).padStart(2,"0")}:{String(parseInt(timerMM)||0).padStart(2,"0")}:{String(parseInt(timerSS)||0).padStart(2,"0")}
+              </span>
+            </div>
+            <div style={{display:"flex",gap:11}}>
+              <button className="btn" onClick={()=>setBossTimerModal(null)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",padding:"11px"}}>Cancel</button>
+              <button className="btn" onClick={handleSetTimerHMS} style={{flex:2,background:"linear-gradient(135deg,#0f766e,#14b8a6)",color:"#fff",padding:"11px"}}>Set Timer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legacy Boss Timer Modal (kept for any old references) */}
       {bossModal&&(
         <div onClick={()=>setBossModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div className="modal-box" onClick={e=>e.stopPropagation()}
@@ -1933,7 +2154,136 @@ function MembersTable({ filtered, currentUser, canManage, onEdit, onRemove, onAd
   );
 }
 
-// ── Boss Panel (Dashboard sidebar) ───────────────────────────────────────────
+// ── Boss Group Panel (full page) ─────────────────────────────────────────────
+function BossGroupPanel({ title, subtitle, color, bosses, groupKey, canManage, killFlash, onKill, onReset, onSetTimer, onImage, onAddChannel, onRemoveChannel, onRespawnEdit, showRespawnEdit, floorLabels }) {
+  // Group bosses by unique name
+  const bossNames = [...new Set(bosses.map(b=>b.name))];
+  const [editRespawn, setEditRespawn] = useState(null); // {id, val}
+
+  return(
+    <div style={{background:"rgba(255,255,255,0.02)",border:`1px solid ${color}30`,borderRadius:18,padding:"18px 20px",marginBottom:22}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:17,fontWeight:700,color,letterSpacing:"0.04em"}}>{title}</div>
+          <div style={{fontSize:11,color:"#3d5070",marginTop:2}}>{subtitle}</div>
+        </div>
+      </div>
+      {bossNames.map(bossName=>{
+        const bossChannels = bosses.filter(b=>b.name===bossName);
+        const templateBoss = bossChannels[0];
+        return(
+          <div key={bossName} style={{marginBottom:18}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",letterSpacing:"0.04em"}}>
+                {floorLabels ? `${templateBoss.floor} · ${bossName}` : bossName}
+              </div>
+              {canManage&&onAddChannel&&(
+                <button className="ghost-btn" onClick={()=>onAddChannel(bossName, templateBoss.color)}
+                  style={{fontSize:10,padding:"4px 10px",color:"#60a5fa",borderColor:"rgba(96,165,250,0.3)"}}>
+                  ➕ Add Channel
+                </button>
+              )}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
+              {bossChannels.map(b=>{
+                const st=bossStatus(b.secs);
+                const bs=BOSS_STATUS_STYLE[st];
+                const respH=Math.floor((b.respawnSecs||0)/3600),respM=Math.floor(((b.respawnSecs||0)%3600)/60),respS=(b.respawnSecs||0)%60;
+                return(
+                  <div key={b.id} className={`boss-card${killFlash===b.id?" kill-flash":""}`}
+                    style={{background:"rgba(255,255,255,0.03)",border:`1px solid rgba(255,255,255,0.07)`,borderRadius:16,padding:"16px",position:"relative",overflow:"hidden"}}>
+                    <div style={{position:"absolute",left:0,top:0,bottom:0,width:4,background:b.color,borderRadius:"4px 0 0 4px"}} />
+
+                    <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:10}}>
+                      <div className="boss-img-upload" onClick={()=>canManage&&onImage(b.id)}
+                        style={{width:78,height:78,borderRadius:12,background:b.color+"22",border:`2px solid ${b.color}44`,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0,position:"relative",cursor:canManage?"pointer":"default"}}>
+                        {b.image ? <img src={b.image} alt={b.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : <span style={{fontSize:28}}>👹</span>}
+                        {canManage&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity 0.2s"}} className="boss-img-ov"><span style={{fontSize:16}}>📷</span></div>}
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#e2e8f0",letterSpacing:"0.02em"}}>{b.name}</div>
+                        <div style={{fontSize:10.5,color:"#3d5070",marginTop:2}}>Channel {b.channel}</div>
+                        <span style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:6,background:bs.bg,color:bs.color,border:`1px solid ${bs.border}`,fontSize:10,fontWeight:700,marginTop:4}}>{st}</span>
+                      </div>
+                      {canManage&&onRemoveChannel&&bossChannels.length>1&&(
+                        <button onClick={()=>onRemoveChannel(b.id)} style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontSize:11,fontFamily:"'Exo 2',sans-serif",fontWeight:700,flexShrink:0}}>✕</button>
+                      )}
+                    </div>
+
+                    {/* Big timer */}
+                    <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:42,fontWeight:700,color:b.color,letterSpacing:"0.06em",lineHeight:1,textAlign:"center",marginBottom:4}}>
+                      {fmtSecs(b.secs)}
+                    </div>
+                    {b.secs===0&&b.elapsed>0&&(
+                      <div style={{textAlign:"center",fontSize:10.5,color:"#34d399",marginBottom:8}}>
+                        ⏱ Alive for {fmtSecs(b.elapsed)}
+                      </div>
+                    )}
+                    {b.secs===0&&!b.elapsed&&<div style={{marginBottom:8}} />}
+
+                    {/* Respawn time display + edit */}
+                    {showRespawnEdit&&b.respawnSecs!=null&&(
+                      <div style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"6px 10px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:10,color:"#3d5070"}}>Respawn: {String(respH).padStart(2,"0")}:{String(respM).padStart(2,"0")}:{String(respS).padStart(2,"0")}</span>
+                        {canManage&&(
+                          <button onClick={()=>setEditRespawn({id:b.id,val:b.respawnSecs})}
+                            style={{fontSize:9.5,color:"#60a5fa",background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:5,padding:"2px 7px",cursor:"pointer",fontFamily:"'Exo 2',sans-serif",fontWeight:600}}>✏️ Edit</button>
+                        )}
+                      </div>
+                    )}
+
+                    {editRespawn?.id===b.id&&(
+                      <RespawnEditor current={editRespawn.val} onSave={(secs)=>{onRespawnEdit(b.id,secs);setEditRespawn(null);}} onCancel={()=>setEditRespawn(null)} />
+                    )}
+
+                    {canManage&&<>
+                      <button className="kill-btn" onClick={()=>onKill(b.id)} style={{background:`${b.color}20`,border:`1px solid ${b.color}45`,color:b.color,marginBottom:8,width:"100%"}}>
+                        ☠️ Mark Killed — start respawn
+                      </button>
+                      <div style={{display:"flex",gap:8}}>
+                        <button className="ghost-btn" onClick={()=>onReset(b.id)} style={{flex:1,fontSize:10.5,padding:"6px"}}>🔴 Set LIVE</button>
+                        <button className="ghost-btn" onClick={()=>onSetTimer(b.id)} style={{flex:1,fontSize:10.5,padding:"6px"}}>⏱ Set Timer</button>
+                      </div>
+                    </>}
+                    {!canManage&&<div style={{textAlign:"center",color:"#3d5070",fontSize:10.5,marginTop:4}}>👀 View only</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Respawn time editor ────────────────────────────────────────────────────────
+function RespawnEditor({ current, onSave, onCancel }) {
+  const [h,setH]=useState(String(Math.floor((current||0)/3600)));
+  const [m,setM]=useState(String(Math.floor(((current||0)%3600)/60)));
+  const [s,setS]=useState(String((current||0)%60));
+  const totalSecs=()=>(parseInt(h)||0)*3600+(parseInt(m)||0)*60+(parseInt(s)||0);
+  return(
+    <div style={{background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:9,padding:"10px",marginBottom:10}}>
+      <div style={{fontSize:10,color:"#60a5fa",fontWeight:700,marginBottom:7,letterSpacing:"0.06em"}}>EDIT RESPAWN TIME (HH:MM:SS)</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:8}}>
+        {[{lbl:"HH",v:h,s:setH},{lbl:"MM",v:m,s:setM},{lbl:"SS",v:s,s:setS}].map(f=>(
+          <div key={f.lbl}>
+            <div style={{fontSize:9,color:"#3d5070",marginBottom:3,textAlign:"center"}}>{f.lbl}</div>
+            <input type="number" min="0" value={f.v} onChange={e=>f.s(e.target.value)}
+              style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"5px",color:"#e2e8f0",fontSize:13,fontFamily:"'Rajdhani',sans-serif",fontWeight:700,textAlign:"center",outline:"none"}} />
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:7}}>
+        <button onClick={onCancel} style={{flex:1,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",borderRadius:7,padding:"6px",fontSize:11,cursor:"pointer",fontFamily:"'Exo 2',sans-serif",fontWeight:700}}>Cancel</button>
+        <button onClick={()=>onSave(totalSecs())} style={{flex:2,background:"rgba(96,165,250,0.2)",border:"1px solid rgba(96,165,250,0.4)",color:"#60a5fa",borderRadius:7,padding:"6px",fontSize:11,cursor:"pointer",fontFamily:"'Exo 2',sans-serif",fontWeight:700}}>Save</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Boss Panel (Dashboard sidebar — shows live4 only) ─────────────────────────
 function BossPanel({ bosses, onKill, onReset, onManual, onBossImage, killFlash, canManage }) {
   return(
     <div style={{background:"linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))",border:"1px solid rgba(255,255,255,0.07)",borderRadius:18,overflow:"hidden",display:"flex",flexDirection:"column"}}>
@@ -1956,13 +2306,14 @@ function BossPanel({ bosses, onKill, onReset, onManual, onBossImage, killFlash, 
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontSize:12.5,fontWeight:700,color:"#e2e8f0",letterSpacing:"0.02em"}}>{b.name}</div>
-                  <div style={{fontSize:10,color:"#3d5070",marginTop:1}}>{b.ch}</div>
+                  <div style={{fontSize:10,color:"#3d5070",marginTop:1}}>CH {b.channel}</div>
                 </div>
                 <span style={{display:"inline-flex",padding:"2px 8px",borderRadius:6,background:bs.bg,color:bs.color,border:`1px solid ${bs.border}`,fontSize:9.5,fontWeight:700,flexShrink:0}}>{st}</span>
               </div>
               <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:26,fontWeight:700,color:b.color,letterSpacing:"0.06em",lineHeight:1,marginBottom:9}}>
                 {fmtSecs(b.secs)}
               </div>
+              {b.secs===0&&b.elapsed>0&&<div style={{fontSize:9.5,color:"#34d399",marginBottom:6,textAlign:"center"}}>⏱ +{fmtSecs(b.elapsed)}</div>}
               {canManage&&<>
                 <button className="kill-btn" onClick={()=>onKill(b.id)} style={{background:`${b.color}20`,border:`1px solid ${b.color}45`,color:b.color,marginBottom:6,fontSize:11}}>
                   ☠️ Mark Killed
