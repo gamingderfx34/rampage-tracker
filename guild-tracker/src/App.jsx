@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 // ── Supabase client ─────────────────────────────────────────────────────────
 // Replace these with your actual Supabase project URL and anon key
 const SUPABASE_URL = "https://mbalsusqtkbtoxuawjau.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"; // <-- replace this
+const SUPABASE_ANON_KEY = "sb_publishable_174MDqsta2KNe3orpEN8Ww_0yzhHYaM"; // <-- replace this
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── Constants ───────────────────────────────────────────────────────────────
