@@ -191,7 +191,7 @@ export default function App() {
   const [regForm, setRegForm]         = useState({name:"",email:"",password:"",confirmPassword:"",cls:"Berserker"});
 
   // App state
-  const [activeNav, setActiveNav]     = useState("dashboard");
+  const [activeNav, setActiveNav]     = useState(()=>lsGet("rampageActiveNav","dashboard"));
   const [collapsed, setCollapsed]     = useState(false);
   const [logoUrl, setLogoUrl]         = useState(MOCK_LOGO);
   const [logoErr, setLogoErr]         = useState(false);
@@ -247,6 +247,7 @@ export default function App() {
   const auctionImgRef = useRef(null);
 
   // ── Persist to localStorage ──────────────────────────────────────────────
+  useEffect(()=>{ lsSet("rampageActiveNav", activeNav); }, [activeNav]);
   useEffect(()=>{ lsSet("rampageBosses", bosses); }, [bosses]);
   useEffect(()=>{ lsSet("rampageFolkvangN", folkvangNormal); }, [folkvangNormal]);
   useEffect(()=>{ lsSet("rampageFolkvangI", folkvangInterserver); }, [folkvangInterserver]);
@@ -314,13 +315,26 @@ export default function App() {
   useEffect(()=>{ loadMembers(); },[]);
   useEffect(()=>{ loadAuctionItems(); },[]);
 
-  // ── Supabase real-time: auction_items ─────────────────────────────────────
+  // ── Supabase real-time subscriptions ─────────────────────────────────────
   useEffect(()=>{
-    const sub = supabase
+    // Auction items real-time
+    const auctionSub = supabase
       .channel("auction_items_rt")
       .on("postgres_changes",{event:"*",schema:"public",table:"auction_items"},()=>{ loadAuctionItems(); })
       .subscribe();
-    return ()=>{ supabase.removeChannel(sub); };
+
+    // Members real-time — so new registrations & role/points changes appear everywhere instantly
+    const membersSub = supabase
+      .channel("members_rt")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"members"},()=>{ loadMembers(); })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"members"},()=>{ loadMembers(); })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"members"},()=>{ loadMembers(); })
+      .subscribe();
+
+    return ()=>{
+      supabase.removeChannel(auctionSub);
+      supabase.removeChannel(membersSub);
+    };
   },[]);
 
   const loadMembers = async()=>{
