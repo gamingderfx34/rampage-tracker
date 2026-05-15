@@ -7,6 +7,14 @@ const SUPABASE_URL = "https://mbalsusqtkbtoxuawjau.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_174MDqsta2KNe3orpEN8Ww_0yzhHYaM"; // <-- replace this
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ── Admin email (app creator/maintainer) ─────────────────────────────────────
+const ADMIN_EMAIL = ""; // Set this to your email to show "Admin" role label
+function displayRole(user) {
+  if (!user) return "";
+  if (ADMIN_EMAIL && user.email === ADMIN_EMAIL) return "Admin";
+  return user.role || "Recruit";
+}
+
 // ── Constants ───────────────────────────────────────────────────────────────
 const MOCK_LOGO = "https://mbalsusqtkbtoxuawjau.supabase.co/storage/v1/object/public/asset/RAMPAGE%20FOR%20APP.png";
 
@@ -149,6 +157,11 @@ export default function App() {
   const [manualMins, setManualMins]   = useState("");
   const [bidModal, setBidModal]       = useState(null);
   const [bidAmount, setBidAmount]     = useState("");
+  const [showAddAuction, setShowAddAuction] = useState(false);
+  const [editAuction, setEditAuction] = useState(null);
+  const [auctionForm, setAuctionForm] = useState({name:"",rarity:"Epic",minBid:1000,durationHours:24,image:null,imageUrl:""});
+  const [auctionImgUploading, setAuctionImgUploading] = useState(false);
+  const [showBidHistory, setShowBidHistory] = useState(null); // item id
   const [notifications, setNotifications] = useState([]);
   const [now, setNow]                 = useState(Date.now());
   const [discordWebhook, setDiscordWebhook] = useState("");
@@ -168,6 +181,7 @@ export default function App() {
 
   const fileRef    = useRef(null);
   const bossImgRef = useRef(null);
+  const auctionImgRef = useRef(null);
 
   // ── Persist to localStorage ──────────────────────────────────────────────
   useEffect(()=>{ lsSet("rampageBosses", bosses); }, [bosses]);
@@ -218,6 +232,16 @@ export default function App() {
 
   // ── Load members from Supabase ────────────────────────────────────────────
   useEffect(()=>{ loadMembers(); },[]);
+  useEffect(()=>{ loadAuctionItems(); },[]);
+
+  // ── Supabase real-time: auction_items ─────────────────────────────────────
+  useEffect(()=>{
+    const sub = supabase
+      .channel("auction_items_rt")
+      .on("postgres_changes",{event:"*",schema:"public",table:"auction_items"},()=>{ loadAuctionItems(); })
+      .subscribe();
+    return ()=>{ supabase.removeChannel(sub); };
+  },[]);
 
   const loadMembers = async()=>{
     try {
@@ -231,6 +255,19 @@ export default function App() {
     } catch {
       setMembers(lsGet("rampageMembers", []));
     }
+  };
+
+  const loadAuctionItems = async()=>{
+    try {
+      const { data, error } = await supabase.from("auction_items").select("*").order("created_at",{ascending:false});
+      if (!error && data && data.length > 0) {
+        setAuctionItems(data.map(i=>({
+          ...i,
+          bids: typeof i.bids === "string" ? JSON.parse(i.bids) : (i.bids||[]),
+          endTime: i.end_time ? new Date(i.end_time).getTime() : (Date.now()+3600000),
+        })));
+      }
+    } catch {}
   };
 
   // Persist members locally as backup
@@ -497,8 +534,87 @@ export default function App() {
     showToast("🗑️ Event deleted","warn");
   };
 
+  // ── Auction image upload to Supabase storage ──────────────────────────────
+  const handleAuctionImageUpload = async(e)=>{
+    const file = e.target.files?.[0]; if(!file) return;
+    setAuctionImgUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `auction/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("asset").upload(path, file, {cacheControl:"3600",upsert:false});
+      if(!error) {
+        const { data: urlData } = supabase.storage.from("asset").getPublicUrl(path);
+        setAuctionForm(p=>({...p,imageUrl:urlData.publicUrl,image:null}));
+        showToast("🖼️ Image uploaded!");
+      } else {
+        // fallback: local base64
+        const reader = new FileReader();
+        reader.onload = ev=>setAuctionForm(p=>({...p,imageUrl:ev.target.result,image:null}));
+        reader.readAsDataURL(file);
+      }
+    } catch {
+      const reader = new FileReader();
+      reader.onload = ev=>setAuctionForm(p=>({...p,imageUrl:ev.target.result,image:null}));
+      reader.readAsDataURL(file);
+    }
+    setAuctionImgUploading(false);
+  };
+
+  const handleAddAuctionItem = async()=>{
+    if(!auctionForm.name.trim()) { showToast("❌ Item name required","error"); return; }
+    const endTime = Date.now() + (parseFloat(auctionForm.durationHours)||24)*3600000;
+    const item = {
+      id: String(Date.now()),
+      name: auctionForm.name,
+      rarity: auctionForm.rarity,
+      minBid: parseInt(auctionForm.minBid)||500,
+      currentBid: 0, highBidder: null,
+      bids: [],
+      locked: false, winner: null, claimed: false,
+      image: auctionForm.imageUrl || "🏺",
+      end_time: new Date(endTime).toISOString(),
+      endTime,
+      created_at: new Date().toISOString(),
+    };
+    try {
+      const dbItem = {...item, bids:JSON.stringify([]), endTime:undefined};
+      const { error } = await supabase.from("auction_items").insert([dbItem]);
+      if(error) throw error;
+      await loadAuctionItems();
+    } catch {
+      setAuctionItems(prev=>[item,...prev]);
+    }
+    setShowAddAuction(false);
+    setAuctionForm({name:"",rarity:"Epic",minBid:1000,durationHours:24,image:null,imageUrl:""});
+    showToast(`✅ ${item.name} added to auction!`);
+  };
+
+  const handleEditAuctionItem = async()=>{
+    if(!editAuction) return;
+    try {
+      const { error } = await supabase.from("auction_items").update({
+        name: editAuction.name,
+        rarity: editAuction.rarity,
+        minBid: editAuction.minBid,
+        image: editAuction.image,
+        end_time: new Date(editAuction.endTime).toISOString(),
+      }).eq("id",editAuction.id);
+      if(!error) await loadAuctionItems();
+      else setAuctionItems(prev=>prev.map(i=>i.id===editAuction.id?editAuction:i));
+    } catch {
+      setAuctionItems(prev=>prev.map(i=>i.id===editAuction.id?editAuction:i));
+    }
+    setEditAuction(null); showToast("✅ Auction item updated!");
+  };
+
+  const handleDeleteAuctionItem = async(id)=>{
+    try { await supabase.from("auction_items").delete().eq("id",id); } catch {}
+    setAuctionItems(prev=>prev.filter(i=>i.id!==id));
+    showToast("🗑️ Item removed","warn");
+  };
+
   // ── Auction ───────────────────────────────────────────────────────────────
-  const handleBid = ()=>{
+  const handleBid = async()=>{
     const amount = parseInt(bidAmount);
     const myMember = members.find(m=>m.name===currentUser?.name);
     const myPoints = myMember?.points || 0;
@@ -509,18 +625,33 @@ export default function App() {
     if(amount < bidModal.minBid) { showToast(`❌ Minimum bid is ${bidModal.minBid.toLocaleString()} pts`,"error"); return; }
     if(amount > myPoints) { showToast(`❌ Not enough points! You have ${myPoints.toLocaleString()} pts`,"error"); return; }
     const myName = currentUser?.name||"Guest";
-    setAuctionItems(prev=>prev.map(item=>{
-      if(item.id!==bidModal.id) return item;
-      return {...item, currentBid:amount, highBidder:myName, bids:[...item.bids,{bidder:myName,amount,time:new Date().toLocaleTimeString()}]};
-    }));
+    const newBid = {bidder:myName, amount, time:new Date().toLocaleTimeString()};
+    const updatedBids = [...(bidModal.bids||[]), newBid];
+    // Real-time update via Supabase
+    try {
+      const { error } = await supabase.from("auction_items").update({
+        currentBid: amount,
+        highBidder: myName,
+        bids: JSON.stringify(updatedBids),
+      }).eq("id",bidModal.id);
+      if(!error) await loadAuctionItems();
+      else throw error;
+    } catch {
+      setAuctionItems(prev=>prev.map(item=>{
+        if(item.id!==bidModal.id) return item;
+        return {...item, currentBid:amount, highBidder:myName, bids:updatedBids};
+      }));
+    }
     setBidModal(null); setBidAmount("");
     showToast(`🏺 Bid of ${amount.toLocaleString()} pts placed on ${bidModal.name}!`);
   };
 
-  const handleAnnounceWinner = (item)=>{
+  const handleAnnounceWinner = async(item)=>{
     const w = {id:Date.now(),itemName:item.name,winner:item.highBidder,points:item.currentBid,date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}),claimed:false,rarity:item.rarity,image:item.image};
     setWinners(prev=>[...prev,w]);
-    setAuctionItems(prev=>prev.map(i=>i.id===item.id?{...i,locked:true,winner:item.highBidder}:i));
+    try { await supabase.from("auction_items").update({locked:true,winner:item.highBidder}).eq("id",item.id); await loadAuctionItems(); } catch {
+      setAuctionItems(prev=>prev.map(i=>i.id===item.id?{...i,locked:true,winner:item.highBidder}:i));
+    }
     if(discordConnected) showToast("📢 Discord notified: Winner announced!","info");
     showToast(`🏆 ${item.highBidder} won ${item.name}!`);
   };
@@ -707,7 +838,7 @@ export default function App() {
               </div>
               <div style={{minWidth:0,flex:1}}>
                 <div style={{fontSize:13.5,fontWeight:700,color:"#e2e8f0",letterSpacing:"0.04em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name}</div>
-                <span style={{fontSize:11,color:ROLE_STYLE[currentUser.role]?.color||"#a5b4fc"}}>{currentUser.role||"Member"}</span>
+                <span style={{fontSize:11,color:ROLE_STYLE[currentUser.role]?.color||"#a5b4fc"}}>{displayRole(currentUser)}</span>
               </div>
             </>}
             <div style={{position:"absolute",top:10,right:11,width:8,height:8,borderRadius:"50%",background:"#34d399",boxShadow:"0 0 10px #34d399"}} />
@@ -816,23 +947,14 @@ export default function App() {
               ))}
             </div>
 
-            <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:18}}>
-              <MembersTable filtered={filtered} currentUser={currentUser} canManage={canManage} onEdit={setEditMember} onRemove={handleRemoveMember} onAddPoints={isAdmin?handleAddPoints:null} />
-              <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                <BossPanel bosses={bosses} onKill={handleMarkKilled} onReset={handleResetToZero} onManual={id=>{setBossModal(id);setManualMins("");}} onBossImage={id=>{setBossImageModal(id);bossImgRef.current?.click();}} killFlash={killFlash} canManage={canManage} />
-                {/* Today's field bosses */}
-                {todayBosses.length>0&&(
-                  <div style={{background:"rgba(248,113,113,0.07)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:14,padding:"14px 16px"}}>
-                    <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:14,fontWeight:700,color:"#f87171",marginBottom:10,letterSpacing:"0.04em"}}>👹 Field Bosses Today</div>
-                    {todayBosses.map((b,i)=>(
-                      <div key={i} style={{marginBottom:8,paddingBottom:8,borderBottom:i<todayBosses.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}>
-                        <div style={{fontSize:12.5,fontWeight:700,color:"#e2e8f0"}}>{b.name}</div>
-                        <div style={{fontSize:10.5,color:"#3d5070",marginTop:2}}>{b.map} · {b.time} UTC+8</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            <div style={{background:"linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))",border:"1px solid rgba(255,255,255,0.07)",borderRadius:20,overflow:"hidden"}}>
+              <div style={{padding:"16px 22px 12px",borderBottom:"1px solid rgba(255,255,255,0.05)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <h3 style={{fontFamily:"'Rajdhani',sans-serif",fontSize:16,fontWeight:700,color:"#f1f5f9",letterSpacing:"0.04em"}}>Guild Roster</h3>
+                  <p style={{color:"#3d5070",fontSize:11,marginTop:1}}>{members.length} members</p>
+                </div>
               </div>
+              <MembersTable filtered={filtered} currentUser={currentUser} canManage={canManage} onEdit={setEditMember} onRemove={handleRemoveMember} onAddPoints={isAdmin?handleAddPoints:null} />
             </div>
           </div>}
 
@@ -1102,32 +1224,66 @@ export default function App() {
           {/* ── AUCTION HOUSE ── */}
           {activeNav==="auction"&&(
             <div className="page">
-              <div style={{background:"rgba(96,165,250,0.07)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:12,padding:"12px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                <span style={{fontSize:18}}>💎</span>
-                <div>
-                  <div style={{fontSize:13,fontWeight:700,color:"#60a5fa"}}>Points-Based Bidding</div>
-                  <div style={{fontSize:11.5,color:"#4a6a8a",marginTop:1}}>
-                    Balance: <strong style={{color:"#60a5fa"}}>{myPoints.toLocaleString()} pts</strong>
-                    {currentUser?.role==="Recruit"&&<span style={{color:"#f87171",marginLeft:10}}>⚠️ Recruits cannot bid — get promoted first</span>}
+              {/* Header bar */}
+              <div style={{background:"rgba(96,165,250,0.07)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:12,padding:"12px 18px",marginBottom:18,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <span style={{fontSize:18}}>💎</span>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#60a5fa"}}>Points-Based Bidding</div>
+                    <div style={{fontSize:11.5,color:"#4a6a8a",marginTop:1}}>
+                      Balance: <strong style={{color:"#60a5fa"}}>{myPoints.toLocaleString()} pts</strong>
+                      {currentUser?.role==="Recruit"&&<span style={{color:"#f87171",marginLeft:10}}>⚠️ Recruits cannot bid</span>}
+                    </div>
                   </div>
                 </div>
+                {isAdmin&&(
+                  <button className="btn" onClick={()=>{setAuctionForm({name:"",rarity:"Epic",minBid:1000,durationHours:24,image:null,imageUrl:""});setShowAddAuction(true);}}
+                    style={{background:"linear-gradient(135deg,#4f46e5,#6366f1)",color:"#fff",padding:"10px 18px",fontSize:13,boxShadow:"0 4px 20px rgba(99,102,241,0.3)"}}>
+                    ➕ Add Item
+                  </button>
+                )}
               </div>
-              {myBids.length>0&&(
-                <div style={{background:"rgba(251,191,36,0.07)",border:"1px solid rgba(251,191,36,0.2)",borderRadius:14,padding:"14px 20px",marginBottom:18,display:"flex",alignItems:"center",gap:14}}>
-                  <span style={{fontSize:18}}>🏺</span>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#fbbf24"}}>Your Active Bids</div>
-                    <div style={{fontSize:11.5,color:"#92754a",marginTop:2}}>{myBids.map(i=>i.name).join(", ")}</div>
+
+              {/* Outbid notifications panel */}
+              {myBids.filter(i=>i.highBidder!==currentUser?.name&&i.bids.some(b=>b.bidder===currentUser?.name)).length>0&&(
+                <div style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:14,padding:"14px 20px",marginBottom:18}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#f87171",marginBottom:8}}>⚠️ You've Been Outbid!</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {myBids.filter(i=>i.highBidder!==currentUser?.name&&i.bids.some(b=>b.bidder===currentUser?.name)).map(i=>{
+                      const myBid=i.bids.filter(b=>b.bidder===currentUser?.name).slice(-1)[0];
+                      return(
+                        <div key={i.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(248,113,113,0.06)",borderRadius:9,padding:"8px 14px"}}>
+                          <div>
+                            <span style={{fontSize:12.5,fontWeight:700,color:"#e2e8f0"}}>{i.name}</span>
+                            <span style={{fontSize:11,color:"#f87171",marginLeft:8}}>Your bid: {myBid?.amount?.toLocaleString()} pts</span>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:11,color:"#3d5070"}}>Current leader</div>
+                            <div style={{fontSize:12,fontWeight:700,color:"#fbbf24"}}>{i.highBidder} · {i.currentBid.toLocaleString()} pts</div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
+
+              {/* Winning items */}
+              {myBids.filter(i=>i.highBidder===currentUser?.name&&!i.locked).length>0&&(
+                <div style={{background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:14,padding:"14px 20px",marginBottom:18}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#34d399",marginBottom:4}}>✅ Currently Winning</div>
+                  <div style={{fontSize:11.5,color:"#2d7a5e"}}>{myBids.filter(i=>i.highBidder===currentUser?.name&&!i.locked).map(i=>i.name).join(", ")}</div>
+                </div>
+              )}
+
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
                 {auctionItems.map(item=>{
                   const rs=RARITY_STYLE[item.rarity]||RARITY_STYLE.Common;
-                  const myBid=item.bids.find(b=>b.bidder===currentUser?.name);
+                  const myBid=item.bids?.find(b=>b.bidder===currentUser?.name);
                   const amWinning=item.highBidder===currentUser?.name;
-                  const timeLeft=item.endTime-now;
-                  const canBid = myPoints >= item.minBid && !item.locked && currentUser?.role!=="Recruit";
+                  const timeLeft=(item.endTime||0)-now;
+                  const canBid = myPoints >= item.minBid && !item.locked && currentUser?.role!=="Recruit" && !item.locked && timeLeft>0;
+                  const isImg = item.image && (item.image.startsWith("http")||item.image.startsWith("data"));
                   return(
                     <div key={item.id} className={`auction-card${item.locked?" locked":""}`}
                       style={{background:"linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))",border:`1px solid ${item.locked?"rgba(100,116,139,0.2)":rs.glow.replace("0.3","0.25")}`,borderRadius:18,padding:"20px",position:"relative",overflow:"hidden",boxShadow:item.locked?"none":`0 4px 30px ${rs.glow}`}}>
@@ -1143,17 +1299,42 @@ export default function App() {
                       )}
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,position:"relative",zIndex:1}}>
                         <div style={{display:"flex",alignItems:"center",gap:11}}>
-                          <div style={{width:52,height:52,borderRadius:12,background:rs.bg,border:`1px solid ${rs.color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>{item.image}</div>
+                          <div style={{width:78,height:78,borderRadius:12,background:rs.bg,border:`1px solid ${rs.color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,overflow:"hidden",flexShrink:0}}>
+                            {isImg?<img src={item.image} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}} />:<span>{item.image||"🏺"}</span>}
+                          </div>
                           <div>
                             <div style={{fontSize:14.5,fontWeight:700,color:"#e2e8f0"}}>{item.name}</div>
-                            <span style={{fontSize:10.5,color:rs.color,fontWeight:700,letterSpacing:"0.06em"}}>{item.rarity.toUpperCase()}</span>
+                            <span style={{fontSize:10.5,color:rs.color,fontWeight:700,letterSpacing:"0.06em"}}>{item.rarity?.toUpperCase()}</span>
+                            {item.bids?.length>0&&(
+                              <button onClick={()=>setShowBidHistory(showBidHistory===item.id?null:item.id)}
+                                style={{display:"block",marginTop:4,fontSize:10,color:"#60a5fa",background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:5,padding:"2px 8px",cursor:"pointer",fontFamily:"'Exo 2',sans-serif",fontWeight:600}}>
+                                📜 {item.bids.length} bid{item.bids.length!==1?"s":""}
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div style={{textAlign:"right"}}>
                           <div style={{fontSize:10,color:"#3d5070",letterSpacing:"0.06em"}}>TIME LEFT</div>
-                          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:16,fontWeight:700,color:timeLeft<300000?"#f87171":"#e2e8f0"}}>{fmtCountdown(timeLeft)}</div>
+                          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:16,fontWeight:700,color:timeLeft<300000?"#f87171":timeLeft<=0?"#f87171":"#e2e8f0"}}>{fmtCountdown(timeLeft)}</div>
                         </div>
                       </div>
+
+                      {/* Bid history panel */}
+                      {showBidHistory===item.id&&item.bids?.length>0&&(
+                        <div style={{background:"rgba(0,0,0,0.3)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 12px",marginBottom:12,position:"relative",zIndex:1,maxHeight:160,overflowY:"auto"}}>
+                          <div style={{fontSize:10.5,fontWeight:700,color:"#3d5070",marginBottom:7,letterSpacing:"0.07em"}}>BID HISTORY</div>
+                          {[...item.bids].reverse().map((b,idx)=>(
+                            <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:idx<item.bids.length-1?"1px solid rgba(255,255,255,0.04)":"none"}}>
+                              <span style={{fontSize:11.5,fontWeight:700,color:b.bidder===item.highBidder?"#34d399":"#94a3b8"}}>{b.bidder}{b.bidder===item.highBidder&&" 👑"}</span>
+                              <div style={{textAlign:"right"}}>
+                                <span style={{fontFamily:"'Rajdhani',sans-serif",fontSize:14,fontWeight:700,color:b.bidder===item.highBidder?rs.color:"#64748b"}}>{b.amount?.toLocaleString()}</span>
+                                <span style={{fontSize:9.5,color:"#3d5070",marginLeft:5}}>{b.time}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <div style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"12px 16px",marginBottom:14,display:"flex",justifyContent:"space-between",position:"relative",zIndex:1}}>
                         <div>
                           <div style={{fontSize:10,color:"#3d5070",letterSpacing:"0.06em",marginBottom:3}}>CURRENT BID</div>
@@ -1164,16 +1345,24 @@ export default function App() {
                           <div style={{fontSize:13,fontWeight:700,color:amWinning?"#34d399":"#e2e8f0"}}>{item.highBidder}</div>
                         </div>}
                       </div>
-                      {myBid&&!amWinning&&<div style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:11.5,color:"#f87171",position:"relative",zIndex:1}}>⚠️ You've been outbid! Your bid: {myBid.amount.toLocaleString()} pts</div>}
+                      {myBid&&!amWinning&&<div style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:11.5,color:"#f87171",position:"relative",zIndex:1}}>⚠️ Outbid! Your last bid: {myBid.amount.toLocaleString()} pts</div>}
                       {amWinning&&<div style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:11.5,color:"#34d399",position:"relative",zIndex:1}}>✅ You're winning!</div>}
-                      <div style={{display:"flex",gap:9,position:"relative",zIndex:1}}>
-                        {!item.locked&&<button className="btn" onClick={()=>{setBidModal(item);setBidAmount("");}} disabled={!canBid}
-                          style={{flex:1,background:canBid?`linear-gradient(135deg,${rs.color}30,${rs.color}15)`:"rgba(255,255,255,0.04)",border:`1px solid ${canBid?rs.color+"50":"rgba(255,255,255,0.1)"}`,color:canBid?rs.color:"#3d5070",padding:"10px",fontSize:13,opacity:canBid?1:0.7}}>
-                          {currentUser?.role==="Recruit"?"🔒 Recruits Can't Bid":"🏺 Place Bid"}
+                      <div style={{display:"flex",gap:9,position:"relative",zIndex:1,flexWrap:"wrap"}}>
+                        {!item.locked&&timeLeft>0&&<button className="btn" onClick={()=>{setBidModal(item);setBidAmount("");}} disabled={!canBid}
+                          style={{flex:1,minWidth:100,background:canBid?`linear-gradient(135deg,${rs.color}30,${rs.color}15)`:"rgba(255,255,255,0.04)",border:`1px solid ${canBid?rs.color+"50":"rgba(255,255,255,0.1)"}`,color:canBid?rs.color:"#3d5070",padding:"10px",fontSize:13,opacity:canBid?1:0.7}}>
+                          {currentUser?.role==="Recruit"?"🔒 No Bid":"🏺 Place Bid"}
                         </button>}
                         {isAdmin&&!item.locked&&item.highBidder&&(
                           <button className="btn" onClick={()=>handleAnnounceWinner(item)}
                             style={{background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.3)",color:"#fbbf24",padding:"10px 14px",fontSize:12}}>🏆 End</button>
+                        )}
+                        {isAdmin&&!item.locked&&(
+                          <button className="btn" onClick={()=>setEditAuction({...item})}
+                            style={{background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.25)",color:"#60a5fa",padding:"10px 12px",fontSize:12}}>✏️</button>
+                        )}
+                        {isAdmin&&!item.locked&&(
+                          <button className="btn" onClick={()=>handleDeleteAuctionItem(item.id)}
+                            style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.2)",color:"#f87171",padding:"10px 12px",fontSize:12}}>🗑️</button>
                         )}
                       </div>
                     </div>
@@ -1313,6 +1502,113 @@ export default function App() {
 
       {/* ═══ MODALS ═══ */}
       <input ref={bossImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBossImageUpload} />
+      <input ref={auctionImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleAuctionImageUpload} />
+
+      {/* Add Auction Item Modal */}
+      {showAddAuction&&(
+        <div onClick={()=>setShowAddAuction(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}
+            style={{background:"#0a0c18",border:"1px solid rgba(96,165,250,0.2)",borderRadius:22,padding:"30px 32px",width:460,boxShadow:"0 32px 100px rgba(0,0,0,0.9)",maxHeight:"90vh",overflowY:"auto"}}>
+            <h3 style={{fontFamily:"'Rajdhani',sans-serif",fontSize:22,fontWeight:700,color:"#f1f5f9",marginBottom:22,letterSpacing:"0.04em"}}>🏺 Add Auction Item</h3>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Item Name</label>
+              <input className="dark-input" placeholder="e.g. Shadowfang Blade" value={auctionForm.name} onChange={e=>setAuctionForm(p=>({...p,name:e.target.value}))} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+              <div>
+                <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Rarity</label>
+                <select className="dark-input" value={auctionForm.rarity} onChange={e=>setAuctionForm(p=>({...p,rarity:e.target.value}))}>
+                  {["Legendary","Epic","Rare","Common"].map(r=><option key={r} value={r} style={{background:"#0a0c18"}}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Min Bid (pts)</label>
+                <input className="dark-input" type="number" value={auctionForm.minBid} onChange={e=>setAuctionForm(p=>({...p,minBid:e.target.value}))} />
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Duration (hours)</label>
+              <input className="dark-input" type="number" value={auctionForm.durationHours} onChange={e=>setAuctionForm(p=>({...p,durationHours:e.target.value}))} />
+            </div>
+            <div style={{marginBottom:20}}>
+              <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Item Image (78×78)</label>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                {auctionForm.imageUrl&&<div style={{width:78,height:78,borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,0.1)",flexShrink:0}}>
+                  <img src={auctionForm.imageUrl} alt="preview" style={{width:"100%",height:"100%",objectFit:"cover"}} />
+                </div>}
+                <button className="btn" onClick={()=>auctionImgRef.current?.click()} disabled={auctionImgUploading}
+                  style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.3)",color:"#60a5fa",padding:"10px 16px",fontSize:12,flex:1}}>
+                  {auctionImgUploading?"Uploading...":"📷 Upload Image"}
+                </button>
+              </div>
+              <p style={{color:"#3d5070",fontSize:10.5,marginTop:6}}>Uploads to Supabase storage. 78×78px recommended.</p>
+            </div>
+            <div style={{display:"flex",gap:11}}>
+              <button className="btn" onClick={()=>setShowAddAuction(false)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",padding:"11px"}}>Cancel</button>
+              <button className="btn" onClick={handleAddAuctionItem} style={{flex:2,background:"linear-gradient(135deg,#4f46e5,#6366f1)",color:"#fff",padding:"11px",boxShadow:"0 4px 22px rgba(99,102,241,0.35)"}}>Add to Auction</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Auction Item Modal */}
+      {editAuction&&(
+        <div onClick={()=>setEditAuction(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}
+            style={{background:"#0a0c18",border:"1px solid rgba(96,165,250,0.2)",borderRadius:22,padding:"30px 32px",width:460,boxShadow:"0 32px 100px rgba(0,0,0,0.9)",maxHeight:"90vh",overflowY:"auto"}}>
+            <h3 style={{fontFamily:"'Rajdhani',sans-serif",fontSize:22,fontWeight:700,color:"#f1f5f9",marginBottom:22,letterSpacing:"0.04em"}}>✏️ Edit Auction Item</h3>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Item Name</label>
+              <input className="dark-input" value={editAuction.name} onChange={e=>setEditAuction(p=>({...p,name:e.target.value}))} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+              <div>
+                <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Rarity</label>
+                <select className="dark-input" value={editAuction.rarity} onChange={e=>setEditAuction(p=>({...p,rarity:e.target.value}))}>
+                  {["Legendary","Epic","Rare","Common"].map(r=><option key={r} value={r} style={{background:"#0a0c18"}}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Min Bid (pts)</label>
+                <input className="dark-input" type="number" value={editAuction.minBid} onChange={e=>setEditAuction(p=>({...p,minBid:parseInt(e.target.value)||0}))} />
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",color:"#3d5070",fontSize:10.5,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Item Image (78×78)</label>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                {editAuction.image&&(editAuction.image.startsWith("http")||editAuction.image.startsWith("data"))&&(
+                  <div style={{width:78,height:78,borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,0.1)",flexShrink:0}}>
+                    <img src={editAuction.image} alt="preview" style={{width:"100%",height:"100%",objectFit:"cover"}} />
+                  </div>
+                )}
+                <button className="btn" onClick={()=>{
+                  // Use a temp input for edit upload
+                  const inp=document.createElement("input");inp.type="file";inp.accept="image/*";
+                  inp.onchange=async(ev)=>{
+                    const file=ev.target.files?.[0];if(!file)return;
+                    setAuctionImgUploading(true);
+                    try {
+                      const ext=file.name.split(".").pop();
+                      const path=`auction/${Date.now()}.${ext}`;
+                      const {error}=await supabase.storage.from("asset").upload(path,file,{cacheControl:"3600",upsert:false});
+                      if(!error){const {data:ud}=supabase.storage.from("asset").getPublicUrl(path);setEditAuction(p=>({...p,image:ud.publicUrl}));}
+                      else {const r=new FileReader();r.onload=ev2=>setEditAuction(p=>({...p,image:ev2.target.result}));r.readAsDataURL(file);}
+                    } catch {const r=new FileReader();r.onload=ev2=>setEditAuction(p=>({...p,image:ev2.target.result}));r.readAsDataURL(file);}
+                    setAuctionImgUploading(false);
+                  };inp.click();
+                }} disabled={auctionImgUploading}
+                  style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.3)",color:"#60a5fa",padding:"10px 16px",fontSize:12,flex:1}}>
+                  {auctionImgUploading?"Uploading...":"📷 Change Image"}
+                </button>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:11,marginTop:8}}>
+              <button className="btn" onClick={()=>setEditAuction(null)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",padding:"11px"}}>Cancel</button>
+              <button className="btn" onClick={handleEditAuctionItem} style={{flex:2,background:"linear-gradient(135deg,#0f766e,#14b8a6)",color:"#fff",padding:"11px",boxShadow:"0 4px 22px rgba(20,184,166,0.3)"}}>Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Event Modal */}
       {showCreateEvent&&(
@@ -1469,7 +1765,9 @@ export default function App() {
           <div className="modal-box" onClick={e=>e.stopPropagation()}
             style={{background:"#0a0c18",border:"1px solid rgba(255,255,255,0.1)",borderRadius:22,padding:"30px 32px",width:420,boxShadow:"0 32px 100px rgba(0,0,0,0.9)"}}>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-              <span style={{fontSize:28}}>{bidModal.image}</span>
+              <div style={{width:52,height:52,borderRadius:12,background:(RARITY_STYLE[bidModal.rarity]||RARITY_STYLE.Common).bg,border:`1px solid ${(RARITY_STYLE[bidModal.rarity]||RARITY_STYLE.Common).color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,overflow:"hidden",flexShrink:0}}>
+                {bidModal.image&&(bidModal.image.startsWith("http")||bidModal.image.startsWith("data"))?<img src={bidModal.image} alt={bidModal.name} style={{width:"100%",height:"100%",objectFit:"cover"}} />:<span>{bidModal.image||"🏺"}</span>}
+              </div>
               <div>
                 <h3 style={{fontFamily:"'Rajdhani',sans-serif",fontSize:21,fontWeight:700,color:"#f1f5f9",letterSpacing:"0.04em"}}>{bidModal.name}</h3>
                 <span style={{fontSize:10.5,color:(RARITY_STYLE[bidModal.rarity]||RARITY_STYLE.Common).color,fontWeight:700,letterSpacing:"0.07em"}}>{bidModal.rarity.toUpperCase()}</span>
